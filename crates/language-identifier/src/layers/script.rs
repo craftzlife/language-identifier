@@ -112,4 +112,37 @@ mod tests {
         assert!(c.han > 0);
         assert!(c.hiragana > 0);
     }
+
+    #[test]
+    fn classifies_digits_as_other() {
+        assert_eq!(classify('5'), Script::Other);
+        assert_eq!(classify('0'), Script::Other);
+    }
+
+    #[test]
+    fn classifies_emoji_as_other() {
+        assert_eq!(classify('🎉'), Script::Other);
+        assert_eq!(classify('✨'), Script::Other);
+    }
+
+    #[test]
+    fn classifies_greek_as_other() {
+        // Greek block U+0370..U+03FF is not a supported script in v1.
+        assert_eq!(classify('α'), Script::Other);
+        assert_eq!(classify('Ω'), Script::Other);
+    }
+
+    #[test]
+    fn classifies_cyrillic_as_other() {
+        assert_eq!(classify('д'), Script::Other);
+    }
+
+    #[test]
+    fn supported_total_excludes_other() {
+        let n = normalize("abc123");
+        let c = count_scripts(&n);
+        assert_eq!(c.latin, 3);
+        assert_eq!(c.other, 3);
+        assert_eq!(c.supported_total(), 3);
+    }
 }

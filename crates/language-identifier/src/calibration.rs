@@ -41,27 +41,22 @@ pub fn calibrate(mut ranked: Vec<Candidate>, total_visible: usize) -> Calibrated
     let top_lang = ranked[0].language.clone();
     let top_conf = ranked[0].confidence;
     let second_conf = ranked.get(1).map(|c| c.confidence).unwrap_or(0.0);
-
-    if top_conf >= DOMINANT_THRESHOLD {
-        let kept: Vec<Candidate> = ranked.into_iter().take(1).collect();
-        return Calibrated {
-            status: Status::Resolved,
-            candidates: kept,
-            primary_language: Some(top_lang.clone()),
-            note: format!("Single language detected: {}", top_lang),
-        };
-    }
-
     let gap = top_conf - second_conf;
-    if gap >= RESOLVED_GAP {
+
+    if top_conf >= DOMINANT_THRESHOLD || gap >= RESOLVED_GAP {
+        let note = if top_conf >= DOMINANT_THRESHOLD && second_conf < KEEP_FLOOR {
+            format!("Single language detected: {}", top_lang)
+        } else {
+            format!(
+                "{} is primary (confidence {:.2}); remaining candidates treated as embedded segments",
+                top_lang, top_conf
+            )
+        };
         return Calibrated {
             status: Status::Resolved,
             candidates: ranked,
-            primary_language: Some(top_lang.clone()),
-            note: format!(
-                "Confidence gap is significant ({:.2}); {} is primary, remaining candidates treated as embedded segments",
-                gap, top_lang
-            ),
+            primary_language: Some(top_lang),
+            note,
         };
     }
 

@@ -106,4 +106,37 @@ mod tests {
         assert_eq!(s.hans_markers, 0);
         assert_eq!(s.hant_markers, 0);
     }
+
+    #[test]
+    fn vi_marker_includes_breve_and_horn() {
+        let n = normalize("ăn cơm");
+        let s = detect(&n);
+        // ă (breve) and ơ (horn) — both VI-specific letters.
+        assert!(s.vi_markers >= 2);
+    }
+
+    #[test]
+    fn french_diacritics_do_not_register_as_vi() {
+        // é à ç are Latin-1 Supplement, shared across many European languages.
+        let n = normalize("café résumé naïve");
+        let s = detect(&n);
+        assert_eq!(s.vi_markers, 0);
+    }
+
+    #[test]
+    fn shinjitai_kanji_does_not_register_as_hans_only() {
+        // 学, 国, 来, 会 are Shinjitai forms shared with simplified Chinese — not Hans-only markers
+        // by our definition (otherwise pure Japanese text would be misclassified as Chinese).
+        let n = normalize("学校で国語を勉強する");
+        let s = detect(&n);
+        assert_eq!(s.hans_markers, 0, "Shinjitai must not be Hans-only: {s:?}");
+    }
+
+    #[test]
+    fn vi_and_hans_can_coexist_in_one_input() {
+        let n = normalize("Tôi học 老师");
+        let s = detect(&n);
+        assert!(s.vi_markers >= 1);
+        assert!(s.hans_markers >= 1);
+    }
 }

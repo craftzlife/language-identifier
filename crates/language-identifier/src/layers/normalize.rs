@@ -85,4 +85,32 @@ mod tests {
         // Trailing '。' is CJK punctuation and should not count.
         assert_eq!(n.visible_chars, n.chars.len() - 1);
     }
+
+    #[test]
+    fn collapses_tabs_and_newlines_to_single_space() {
+        let n = normalize("hello\t\tworld\n\nfrom\trust");
+        let joined: String = n.chars.iter().collect();
+        assert_eq!(joined, "hello world from rust");
+    }
+
+    #[test]
+    fn strips_non_newline_control_chars() {
+        // Bell (U+0007) should be dropped entirely, not turned into whitespace.
+        let n = normalize("ab\u{0007}cd");
+        let joined: String = n.chars.iter().collect();
+        assert_eq!(joined, "abcd");
+    }
+
+    #[test]
+    fn empty_input_yields_no_chars() {
+        let n = normalize("");
+        assert!(n.chars.is_empty());
+        assert_eq!(n.visible_chars, 0);
+    }
+
+    #[test]
+    fn whitespace_only_input_yields_no_visible_chars() {
+        let n = normalize("   \t\n  ");
+        assert_eq!(n.visible_chars, 0);
+    }
 }

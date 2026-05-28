@@ -59,4 +59,20 @@ mod tests {
         assert_eq!(s.en_hits, 0);
         assert_eq!(s.vi_hits, 0);
     }
+
+    #[test]
+    fn vietnamese_text_scores_vi_bigrams() {
+        // VI text without precomposed-diacritic markers still has characteristic n-grams.
+        let n = normalize("nha truong nghia the gioi nghien cuu khoa hoc");
+        let s = score(&n);
+        assert!(s.vi_hits > 0);
+    }
+
+    #[test]
+    fn ngram_ignores_non_latin_chars() {
+        // Mixing Han into English should not produce extra hits from the Han characters.
+        let baseline = score(&normalize("the quick brown fox"));
+        let with_han = score(&normalize("the quick brown fox 先生"));
+        assert_eq!(baseline.en_hits, with_han.en_hits);
+    }
 }
