@@ -25,7 +25,19 @@ pub struct Calibrated {
     pub note: String,
 }
 
-pub fn calibrate(mut ranked: Vec<Candidate>, total_visible: usize) -> Calibrated {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CalibrationHints {
+    /// Layer 7 reports multiple distinct languages each winning ≥1 sentence.
+    /// When true, the Resolved branch downgrades to Ambiguous (keeps the
+    /// primary language). This matches SDD case M3.
+    pub context_multi_language: bool,
+}
+
+pub fn calibrate(
+    mut ranked: Vec<Candidate>,
+    total_visible: usize,
+    hints: CalibrationHints,
+) -> Calibrated {
     if total_visible == 0 || ranked.is_empty() {
         return Calibrated {
             status: Status::Unknown,
@@ -52,6 +64,20 @@ pub fn calibrate(mut ranked: Vec<Candidate>, total_visible: usize) -> Calibrated
     let gap = top_conf - second_conf;
 
     if top_conf >= DOMINANT_THRESHOLD || gap >= RESOLVED_GAP {
+        if hints.context_multi_language {
+            // SDD case M3: kana dominates the script split, but the paragraph
+            // also contains genuine embedded Chinese sentences. Downgrade
+            // Resolved → Ambiguous, keeping the primary language.
+            return Calibrated {
+                status: Status::Ambiguous,
+                candidates: ranked,
+                primary_language: Some(top_lang.clone()),
+                note: format!(
+                    "{} is primary (confidence {:.2}), but Layer 7 detected sentences in another language — status downgraded to 'ambiguous'",
+                    top_lang, top_conf
+                ),
+            };
+        }
         let note = if top_conf >= DOMINANT_THRESHOLD && second_conf < KEEP_FLOOR {
             format!("Single language detected: {}", top_lang)
         } else {

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
+use crate::layers::context_window::ContextWindowSignal;
 use crate::layers::dictionary::DictionarySignal;
 use crate::layers::function_words::FunctionWordSignal;
+use crate::layers::morphology::MorphologySignal;
 use crate::layers::ngram::NgramSignal;
 use crate::layers::orthography::OrthoSignals;
 use crate::layers::script::ScriptCounts;
@@ -13,6 +15,8 @@ pub struct AggregateInput<'a> {
     pub ngram: &'a NgramSignal,
     pub function_words: &'a FunctionWordSignal,
     pub dictionary: &'a DictionarySignal,
+    pub morphology: &'a MorphologySignal,
+    pub context: &'a ContextWindowSignal,
 }
 
 const FUNCTION_WORD_PER_HIT: f32 = 0.02;
@@ -21,6 +25,10 @@ const DICT_EXCLUSIVE_PER_HIT: f32 = 0.03;
 const DICT_EXCLUSIVE_CAP: f32 = 0.20;
 const DICT_SHARED_PER_HIT: f32 = 0.01;
 const DICT_SHARED_CAP: f32 = 0.10;
+const MORPH_PER_HIT: f32 = 0.02;
+const MORPH_CAP: f32 = 0.10;
+const CONTEXT_PER_SENTENCE: f32 = 0.05;
+const CONTEXT_CAP: f32 = 0.15;
 
 pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
     let mut w: BTreeMap<String, f32> = BTreeMap::new();
@@ -43,6 +51,21 @@ pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
     }
     for (lang, n) in &input.dictionary.shared_per_language {
         let bonus = (*n as f32 * DICT_SHARED_PER_HIT).min(DICT_SHARED_CAP);
+        *w.entry(lang.clone()).or_insert(0.0) += bonus;
+    }
+
+    // Layer 6 — morphology hits (CJK endings + Latin token attributions
+    // already absorbed into the script split above).
+    for (lang, n) in &input.morphology.per_language {
+        let bonus = (*n as f32 * MORPH_PER_HIT).min(MORPH_CAP);
+        *w.entry(lang.clone()).or_insert(0.0) += bonus;
+    }
+
+    // Layer 7 — per-sentence winners. Non-top languages that win at least one
+    // sentence get a small bump so embedded sentences register in the final
+    // candidate distribution.
+    for (lang, n) in &input.context.per_language {
+        let bonus = (*n as f32 * CONTEXT_PER_SENTENCE).min(CONTEXT_CAP);
         *w.entry(lang.clone()).or_insert(0.0) += bonus;
     }
 
@@ -86,19 +109,59 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
     }
 
     if latin_w > 0.0 {
-        let latin_count = input.counts.latin as f32;
-        let vi_density = input.ortho.vi_markers as f32 / latin_count;
+        let latin_count = input.counts.latin as usize;
+        let attr = &input.morphology.latin_attribution;
 
-        if vi_density >= 0.10 {
-            add(w, "vi-VN", latin_w);
-        } else if input.ortho.vi_markers >= 1 {
-            let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
-            add(w, "vi-VN", vi_share);
-            add(w, "en-US", latin_w - vi_share);
-        } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
-            add(w, "vi-VN", latin_w);
+        if !attr.is_empty() {
+            // Use Layer 6 per-token attribution. Each attributed token contributes
+            // its char count to the corresponding language's share. The
+            // unattributed remainder falls back to v2's vi-density / ngram logic.
+            let mut en_chars = 0usize;
+            let mut vi_chars = 0usize;
+            let mut attributed_chars = 0usize;
+            for a in attr {
+                let len = a.end - a.start;
+                attributed_chars += len;
+                match a.language {
+                    "en-US" => en_chars += len,
+                    "vi-VN" => vi_chars += len,
+                    _ => {}
+                }
+            }
+            let remainder = latin_count.saturating_sub(attributed_chars);
+            if en_chars > 0 {
+                add(w, "en-US", en_chars as f32 / total);
+            }
+            if vi_chars > 0 {
+                add(w, "vi-VN", vi_chars as f32 / total);
+            }
+            if remainder > 0 {
+                // Fall through to v2 logic on the unattributed slice. Use the
+                // global vi-marker count as a proxy; this gives plain ASCII
+                // tokens (numbers, unknown words) the same treatment as v2.
+                let rem_w = remainder as f32 / total;
+                if input.ortho.vi_markers >= 1
+                    && (input.ortho.vi_markers as f32 / latin_count as f32) >= 0.10
+                {
+                    add(w, "vi-VN", rem_w);
+                } else {
+                    add(w, "en-US", rem_w);
+                }
+            }
         } else {
-            add(w, "en-US", latin_w);
+            // No Layer 6 attribution — v2 path.
+            let vi_density = input.ortho.vi_markers as f32 / latin_count as f32;
+            if vi_density >= 0.10 {
+                add(w, "vi-VN", latin_w);
+            } else if input.ortho.vi_markers >= 1 {
+                let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
+                add(w, "vi-VN", vi_share);
+                add(w, "en-US", latin_w - vi_share);
+            } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
+                add(w, "vi-VN", latin_w);
+            } else {
+                add(w, "en-US", latin_w);
+            }
         }
     }
 

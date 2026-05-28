@@ -563,14 +563,18 @@ Behavior for edge cases not covered explicitly in the diagram:
 4. ~~**Per-segment output.**~~ `IdentifyResult.segments: Vec<Segment>` added in v2. Byte offsets index into the **normalized** input text (NFC, whitespace collapsed). The list is omitted when the input is single-language or unknown/unsupported.
 6. ~~**Status `"mixed"`.**~~ Produced when ≥2 candidates each hold ≥0.20 confidence, the top candidate is below 0.70, and the input has ≥4 visible chars. Below the size threshold the status falls back to `Ambiguous` (single shared characters are not "mixed-language content").
 
+### Resolved in v3 of the implementation
+
+5. ~~**Inconsistent `primaryLanguage` in Case M3.**~~ v3 implements the diagram's stated behavior: M3 returns `status: "ambiguous"` with `primaryLanguage: "ja"`. The diagram's `"en-US"` value in the JSON output is treated as a typo. Layer 7 (context window) detects the embedded Chinese phrases via an intra-sentence Han-run signal and downgrades Resolved → Ambiguous while keeping `ja` as the primary.
+8. ~~**Dictionary-aware Latin sub-segmentation.**~~ Layer 6 (morphology / tokenization hints) now attributes each Latin token to `en-US` or `vi-VN` using lexicon membership + VI syllable shape. Aggregate uses these per-token attributions to split the Latin script proportionally, producing genuine EN+VI `Mixed` status when both languages have meaningful content.
+
 ### Still open
 
 2. **Layer 10 deployment.** Is the LLM bundled (local, e.g. small on-device model) or remote? Case M3 says "Local LLM is used", which suggests a local model is part of the design.
 3. **API surface for Layer 8.** How does the host application supply user preference / app state to the library? Constructor option? Per-call argument?
-5. **Inconsistent `primaryLanguage` in Case M3.** Reason text says Japanese is the primary language, but the JSON shows `"primaryLanguage": "en-US"`. Confirm which is correct.
 7. **Expected outputs for `EN_VI`, `VI_JA`, `VI_ZH`.** Listed in §8.5 as pending — fill in once decided.
-8. **Dictionary-aware Latin sub-segmentation.** v2's aggregate splits Latin to EN vs VI via a binary VI-diacritic-density switch on the whole Latin segment. A genuine EN-VI Mixed status requires per-token attribution (Layer 6 morphology + Layer 5 dictionary used together).
-9. **Segment offsets are into normalized text, not the caller's original input.** Callers needing to highlight spans in the original string need a v3 mapping back through NFC + whitespace collapse.
+9. **Segment offsets are into normalized text, not the caller's original input.** Callers needing to highlight spans in the original string need a v4 mapping back through NFC + whitespace collapse.
+10. **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`, `etc.`) over-splits sentences. Cosmetic only — per-token attributions still aggregate correctly to the same language — but the `reason` notes can be misleading.
 
 ---
 

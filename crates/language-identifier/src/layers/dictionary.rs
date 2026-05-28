@@ -31,6 +31,12 @@ fn raw_for(lang: &str) -> &'static str {
     }
 }
 
+/// Look up a token in a language's full 10K-entry lexicon. Returns true on hit.
+/// Lazily loads the lexicon on first use per language.
+pub fn contains(lang: &str, token: &str) -> bool {
+    lexicon(lang).contains(token)
+}
+
 fn lexicon(lang: &str) -> &'static HashSet<&'static str> {
     static EN: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static JA: OnceLock<HashSet<&'static str>> = OnceLock::new();

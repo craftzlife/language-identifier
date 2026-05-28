@@ -18,6 +18,18 @@ fn english_and_korean_balanced_is_mixed() {
 }
 
 #[test]
+fn english_and_vietnamese_balanced_is_mixed() {
+    // Same-script (Latin) mixing — v3 Layer 6 per-token attribution makes
+    // this possible. EN words and VI words split proportionally.
+    let r = identify(
+        "Hello world this is teacher meets giáo viên đại học người thầy được kính",
+    );
+    assert_eq!(r.status, Status::Mixed, "{r:?}");
+    let langs: Vec<&str> = r.candidates.iter().map(|c| c.language.as_str()).collect();
+    assert!(langs.contains(&"en-US") && langs.contains(&"vi-VN"));
+}
+
+#[test]
 fn mostly_english_with_small_embedded_is_not_mixed() {
     // Embedded language should be resolved, not mixed.
     let r = identify(

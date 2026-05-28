@@ -6,7 +6,9 @@ Designed for dictionary apps, language-learning tools, and editor text-selection
 
 ## Status
 
-**v2** — implements Layers 0–5 + `segments` output + `mixed` status. See [`SOFTWARE_DESIGN.md`](./SOFTWARE_DESIGN.md) for the full pipeline spec.
+**v3** — implements Layers 0–7 + `segments` output + `mixed` status + SDD-strict
+M3 behavior. See [`SOFTWARE_DESIGN.md`](./SOFTWARE_DESIGN.md) for the full
+pipeline spec.
 
 | Layer | Implemented |
 | --- | --- |
@@ -16,12 +18,12 @@ Designed for dictionary apps, language-learning tools, and editor text-selection
 | 3. Orthographic rules (kana, VI diacritics, Hans/Hant markers) | ✅ |
 | 4. Function words / particles / stopwords | ✅ |
 | 5. Dictionary / lexicon matching (10 K words × 6 langs) | ✅ |
-| 6. Morphology / tokenization hints | ⏳ v3 |
-| 7. Context window scoring | ⏳ v3 |
-| 8. User preference / app state | ⏳ v3 |
-| 9. Lightweight ML classifier | ⏳ v3 |
-| 10. LLM resolver | ⏳ v3 |
-| Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported) | ✅ |
+| 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
+| 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
+| 8. User preference / app state | ⏳ v4 |
+| 9. Lightweight ML classifier | ⏳ v4 |
+| 10. LLM resolver | ⏳ v4 |
+| Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
 Supported languages: `en-US`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi-VN`, `ko`.
 
@@ -159,22 +161,20 @@ See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for field s
 └── language-identifier-library.drawio      # diagram source of truth
 ```
 
-## Known v2 limitations
+## Known v3 limitations
 
-- **Two Latin languages mixing** (en + vi): the Latin segment is currently
-  attributed to a single language via a binary Vietnamese-diacritic-density
-  threshold. Once VI density passes ~10%, all Latin chars go to `vi-VN`; below
-  it, all go to `en-US`. Producing genuine proportional EN/VI splits needs
-  Layer 6/7 work (dictionary-aware Latin sub-segmentation).
-- **`HanAmbiguous` spans surface as `zh`** (the variant-unclear umbrella tag).
-  Disambiguating an isolated Han snippet to `ja` vs `zh-Hans` vs `zh-Hant`
-  without kana or markers requires Layer 7 (context window) work.
-- **M3** (`JA_ZH`): the SDD expects `ambiguous`. v2 returns `resolved ja` with
-  a large gap because kana dominance is unambiguous. Producing the SDD's
-  `ambiguous` requires the LLM layer.
-- **BCP 47 codes**: v2 emits `zh-Hans` / `zh-Hant` (BCP 47-correct). The SDD's
+- **`HanAmbiguous` spans still surface as `zh`** (the variant-unclear umbrella
+  tag). Disambiguating an isolated Han snippet to `ja` vs `zh-Hans` vs
+  `zh-Hant` *without* kana or markers requires Layer 9/10 (ML / LLM).
+- **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`) over-splits
+  sentences. Per-token attribution still aggregates correctly to the same
+  language, so this is cosmetic in the `reason` notes but doesn't change
+  the verdict.
+- **BCP 47 codes**: v3 emits `zh-Hans` / `zh-Hant` (BCP 47-correct). The SDD's
   test outputs use `cn-Hans` / `cn-Hant`; that divergence is intentional and
   noted in §12 of the SDD.
+- **Segment offsets are into normalized text**, not the caller's original
+  string. Mapping back through NFC + whitespace collapse is a v4 concern.
 
 ## License
 

@@ -1,3 +1,4 @@
+use crate::layers::morphology::LatinAttribution;
 use crate::layers::normalize::Normalized;
 use crate::layers::orthography::OrthoSignals;
 use crate::layers::script::{classify, Script};
@@ -7,10 +8,15 @@ use crate::types::Segment;
 /// using the same rules as the aggregate, and group consecutive same-language
 /// chars into segments. Single-language inputs collapse to one segment which
 /// the pipeline then suppresses if it matches the primary language.
+///
+/// `latin_attribution` (from Layer 6) overrides the per-char Latin rule for
+/// any char index inside an attributed token's span — this produces clean
+/// per-word EN vs vi-VN segments for mixed Latin input.
 pub fn extract(
     input: &Normalized,
     ortho: &OrthoSignals,
     han_strategy: HanStrategy,
+    latin_attribution: &[LatinAttribution],
 ) -> Vec<Segment> {
     if input.chars.is_empty() {
         return Vec::new();
@@ -19,9 +25,23 @@ pub fn extract(
     let mut spans: Vec<Segment> = Vec::new();
     let mut current_lang: Option<&'static str> = None;
     let mut start_char_idx: usize = 0;
+    // Walk attributions in lock-step so the lookup is O(1) per char.
+    let mut attr_idx = 0usize;
 
     for (i, &c) in input.chars.iter().enumerate() {
-        let attr = attribute(c, ortho, han_strategy);
+        // Advance past attributions fully consumed by previous chars.
+        while attr_idx < latin_attribution.len() && latin_attribution[attr_idx].end <= i {
+            attr_idx += 1;
+        }
+        let latin_override = latin_attribution
+            .get(attr_idx)
+            .filter(|a| a.start <= i && i < a.end)
+            .map(|a| a.language);
+
+        let attr = match (classify(c), latin_override) {
+            (Script::Latin, Some(l)) => Some(l),
+            _ => attribute(c, ortho, han_strategy),
+        };
         match (current_lang, attr) {
             (None, Some(l)) => {
                 current_lang = Some(l);
@@ -141,7 +161,7 @@ mod tests {
     fn pure_english_single_segment() {
         let n = normalize("Teacher and student");
         let o = orthography::detect(&n);
-        let segs = extract(&n, &o, HanStrategy::HanAmbiguous);
+        let segs = extract(&n, &o, HanStrategy::HanAmbiguous, &[]);
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].language, "en-US");
         assert_eq!(&n.text[segs[0].start..segs[0].end], "Teacher and student");
@@ -152,7 +172,7 @@ mod tests {
         let n = normalize("Please read 先生 carefully");
         let o = orthography::detect(&n);
         // No kana in this input, but the test fixture acts as if Han = ja by strategy.
-        let segs = extract(&n, &o, HanStrategy::JapaneseClaimsHan);
+        let segs = extract(&n, &o, HanStrategy::JapaneseClaimsHan, &[]);
         let langs: Vec<&str> = segs.iter().map(|s| s.language.as_str()).collect();
         assert!(
             langs.contains(&"en-US") && langs.contains(&"ja"),
@@ -166,7 +186,7 @@ mod tests {
     fn vietnamese_segment_keeps_plain_latin_inside() {
         let n = normalize("xin chào bạn");
         let o = orthography::detect(&n);
-        let segs = extract(&n, &o, HanStrategy::HanAmbiguous);
+        let segs = extract(&n, &o, HanStrategy::HanAmbiguous, &[]);
         assert!(segs.iter().any(|s| s.language == "vi-VN"));
     }
 
@@ -174,7 +194,7 @@ mod tests {
     fn empty_input_no_segments() {
         let n = normalize("");
         let o = orthography::detect(&n);
-        let segs = extract(&n, &o, HanStrategy::HanAmbiguous);
+        let segs = extract(&n, &o, HanStrategy::HanAmbiguous, &[]);
         assert!(segs.is_empty());
     }
 
@@ -182,7 +202,7 @@ mod tests {
     fn segment_offsets_are_valid_utf8_boundaries() {
         let n = normalize("a先生b");
         let o = orthography::detect(&n);
-        let segs = extract(&n, &o, HanStrategy::JapaneseClaimsHan);
+        let segs = extract(&n, &o, HanStrategy::JapaneseClaimsHan, &[]);
         for s in &segs {
             // slice must succeed; if not on a char boundary this panics.
             let _ = &n.text[s.start..s.end];
