@@ -557,13 +557,20 @@ Behavior for edge cases not covered explicitly in the diagram:
 
 ## 12. Open questions & future work *(inferred)*
 
-1. **Confidence-gap threshold.** What numeric gap counts as "significant" vs. "small"? The test cases show gaps of `0.69` (Case M1: 0.74 − 0.05) as significant and `0.09` (Case M3: 0.39 − 0.30) as small, but no formal threshold is defined.
+### Resolved in v2 of the implementation
+
+1. ~~**Confidence-gap threshold.**~~ Set in `calibration.rs`: `DOMINANT_THRESHOLD = 0.95`, `RESOLVED_GAP = 0.30`, `MIXED_FLOOR = 0.20`, `MIXED_TOP_CEILING = 0.70`, `MIXED_MIN_VISIBLE = 4`. Tuned against the SDD test cases.
+4. ~~**Per-segment output.**~~ `IdentifyResult.segments: Vec<Segment>` added in v2. Byte offsets index into the **normalized** input text (NFC, whitespace collapsed). The list is omitted when the input is single-language or unknown/unsupported.
+6. ~~**Status `"mixed"`.**~~ Produced when ≥2 candidates each hold ≥0.20 confidence, the top candidate is below 0.70, and the input has ≥4 visible chars. Below the size threshold the status falls back to `Ambiguous` (single shared characters are not "mixed-language content").
+
+### Still open
+
 2. **Layer 10 deployment.** Is the LLM bundled (local, e.g. small on-device model) or remote? Case M3 says "Local LLM is used", which suggests a local model is part of the design.
 3. **API surface for Layer 8.** How does the host application supply user preference / app state to the library? Constructor option? Per-call argument?
-4. **Per-segment output.** The diagram repeatedly refers to "embedded language segment" but the schema only exposes a single `primaryLanguage`. Should the schema be extended with a `segments: [{ language, start, end }]` field for mixed input?
 5. **Inconsistent `primaryLanguage` in Case M3.** Reason text says Japanese is the primary language, but the JSON shows `"primaryLanguage": "en-US"`. Confirm which is correct.
-6. **Status `"mixed"`.** Declared in the enum but no test case produces it — currently mixed-language inputs return `"resolved"` or `"ambiguous"`. Define precisely when `"mixed"` is the right status (the four-language Case M4 returns `"ambiguous"`, so the rule isn't simply "two or more languages present").
 7. **Expected outputs for `EN_VI`, `VI_JA`, `VI_ZH`.** Listed in §8.5 as pending — fill in once decided.
+8. **Dictionary-aware Latin sub-segmentation.** v2's aggregate splits Latin to EN vs VI via a binary VI-diacritic-density switch on the whole Latin segment. A genuine EN-VI Mixed status requires per-token attribution (Layer 6 morphology + Layer 5 dictionary used together).
+9. **Segment offsets are into normalized text, not the caller's original input.** Callers needing to highlight spans in the original string need a v3 mapping back through NFC + whitespace collapse.
 
 ---
 

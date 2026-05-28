@@ -8,9 +8,10 @@ mod aggregate;
 mod calibration;
 mod layers;
 mod pipeline;
+mod segments;
 mod types;
 
-pub use types::{Candidate, IdentifyResult, Reason, Status};
+pub use types::{Candidate, IdentifyResult, Reason, Segment, Status};
 
 /// Identify the language of a single string.
 pub fn identify(input: &str) -> IdentifyResult {

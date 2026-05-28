@@ -2,7 +2,15 @@ use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone)]
 pub struct Normalized {
+    /// The NFC-normalized, whitespace-collapsed, trimmed text. Segment byte
+    /// offsets in `IdentifyResult` index into this string (not the caller's
+    /// original input).
+    pub text: String,
     pub chars: Vec<char>,
+    /// Byte offset (into `text`) of each char in `chars`. Length = chars.len() + 1;
+    /// the last element equals `text.len()` so a byte span for `chars[i..j]` is
+    /// `char_byte_offsets[i]..char_byte_offsets[j]`.
+    pub char_byte_offsets: Vec<usize>,
     pub visible_chars: usize,
 }
 
@@ -25,14 +33,27 @@ pub fn normalize(input: &str) -> Normalized {
             last_was_space = false;
         }
     }
-    let chars: Vec<char> = text.trim().chars().collect();
+    let trimmed = text.trim().to_string();
+
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut char_byte_offsets = Vec::with_capacity(chars.len() + 1);
+    let mut offset = 0;
+    for &c in &chars {
+        char_byte_offsets.push(offset);
+        offset += c.len_utf8();
+    }
+    char_byte_offsets.push(offset);
+    debug_assert_eq!(offset, trimmed.len());
+
     let visible_chars = chars
         .iter()
         .filter(|c| !c.is_whitespace() && !is_punctuation(**c))
         .count();
 
     Normalized {
+        text: trimmed,
         chars,
+        char_byte_offsets,
         visible_chars,
     }
 }
@@ -112,5 +133,21 @@ mod tests {
     fn whitespace_only_input_yields_no_visible_chars() {
         let n = normalize("   \t\n  ");
         assert_eq!(n.visible_chars, 0);
+    }
+
+    #[test]
+    fn char_byte_offsets_align_with_text() {
+        let n = normalize("a先b");
+        // chars = ['a', '先', 'b']; bytes = [0..1, 1..4, 4..5]
+        assert_eq!(n.char_byte_offsets, vec![0, 1, 4, 5]);
+        assert_eq!(n.text, "a先b");
+        let span: &str = &n.text[n.char_byte_offsets[1]..n.char_byte_offsets[2]];
+        assert_eq!(span, "先");
+    }
+
+    #[test]
+    fn char_byte_offsets_for_empty_input() {
+        let n = normalize("");
+        assert_eq!(n.char_byte_offsets, vec![0]);
     }
 }

@@ -3,9 +3,17 @@ use crate::types::{Candidate, Status};
 // Tuned against the SDD test cases:
 // - >= 0.95 dominance ⇒ resolved with a single candidate (G1-G4, P1-P4, W2).
 // - gap >= 0.30 between #1 and #2 ⇒ resolved, keep top + supporting candidates (M1, M2).
+// - >= 2 candidates both ≥ MIXED_FLOOR and top < MIXED_TOP_CEILING ⇒ mixed
+//   (genuine multi-language content, not embedded snippets).
 // - otherwise ⇒ ambiguous (W1, M3, M4 expectations).
 const DOMINANT_THRESHOLD: f32 = 0.95;
 const RESOLVED_GAP: f32 = 0.30;
+const MIXED_FLOOR: f32 = 0.20;
+const MIXED_TOP_CEILING: f32 = 0.70;
+// Mixed implies multiple languages as first-class content, which a few
+// characters of shared script cannot demonstrate. Below this threshold we
+// fall back to Ambiguous even when the candidate distribution looks split.
+const MIXED_MIN_VISIBLE: usize = 4;
 // 0.01 surfaces embedded snippets that round to 1% (matches the M4 case where
 // Vietnamese markers cover ~1% of input and should still appear as a candidate).
 const KEEP_FLOOR: f32 = 0.01;
@@ -57,6 +65,19 @@ pub fn calibrate(mut ranked: Vec<Candidate>, total_visible: usize) -> Calibrated
             candidates: ranked,
             primary_language: Some(top_lang),
             note,
+        };
+    }
+
+    let strong = ranked.iter().filter(|c| c.confidence >= MIXED_FLOOR).count();
+    if strong >= 2 && top_conf < MIXED_TOP_CEILING && total_visible >= MIXED_MIN_VISIBLE {
+        return Calibrated {
+            status: Status::Mixed,
+            candidates: ranked,
+            primary_language: Some(top_lang.clone()),
+            note: format!(
+                "{} candidates each hold ≥{:.2} confidence — input contains multiple languages as first-class content",
+                strong, MIXED_FLOOR
+            ),
         };
     }
 

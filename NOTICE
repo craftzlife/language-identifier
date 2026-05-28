@@ -1,0 +1,25 @@
+language-identifier
+Copyright 2026 Lê Khải Hoàn
+
+This product bundles word-frequency data derived from the following projects:
+
+  wordfreq <https://github.com/rspeer/wordfreq/>
+    Copyright (c) 2014–2024 Robyn Speer and contributors.
+    Licensed under the Apache License, Version 2.0.
+    The data exposed by wordfreq combines multiple corpora distributed under
+    Creative Commons Attribution-ShareAlike 4.0 and other attributed source
+    licenses. See the wordfreq repository for full upstream attribution.
+
+  OpenCC Python <https://github.com/yichen0831/opencc-python/>
+    Licensed under the Apache License, Version 2.0.
+    Used to convert wordfreq's `zh` data into Simplified (Hans) and
+    Traditional (Hant) variants.
+
+The derived files in `crates/language-identifier/src/data/lexicon_*.txt` are
+distributed under Creative Commons Attribution-ShareAlike 4.0
+<https://creativecommons.org/licenses/by-sa/4.0/> in keeping with the
+upstream data licenses.
+
+The rest of this repository (Rust source code, documentation, build
+configuration) is distributed under the MIT OR Apache-2.0 dual license as
+declared in the workspace `Cargo.toml`.

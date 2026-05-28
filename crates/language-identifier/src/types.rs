@@ -34,6 +34,15 @@ impl Reason {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Segment {
+    pub language: String,
+    /// Byte offset into the normalized input text, inclusive.
+    pub start: usize,
+    /// Byte offset into the normalized input text, exclusive.
+    pub end: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentifyResult {
     pub candidates: Vec<Candidate>,
@@ -41,4 +50,6 @@ pub struct IdentifyResult {
     pub primary_language: Option<String>,
     pub status: Status,
     pub reason: Reason,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<Segment>,
 }

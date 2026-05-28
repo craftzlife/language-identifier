@@ -22,15 +22,20 @@ fn w2_english_latin_word() {
 
 #[test]
 fn w1_ambiguous_han_word() {
-    // 先生|教師|先生|老师 — Han-only mixed Simplified+Traditional markers.
-    // v1 (no dictionary) can resolve to a Chinese variant; full match with the diagram
-    // requires Layer 5+. Assert only that we don't return en-US.
+    // 先生|教師|先生|老师 — Han-only with mixed Simplified+Traditional markers.
+    // The SDD expects ambiguous ja/zh. v2 surfaces both ja and a zh-* variant
+    // as candidates via Layer 5 dictionary overlap (the diagram's expected
+    // behavior), but the presence of 老师 (Hans-exclusive) tilts the deterministic
+    // calibration toward zh-Hans. Assert top is in the ja/zh family AND a second
+    // candidate from the other family is present.
     let r = identify("先生 教師 先生 老师");
-    assert_ne!(top_lang(&r), "en-US");
     assert!(
-        matches!(top_lang(&r), "ja" | "zh" | "zh-Hans" | "zh-Hant"),
+        matches!(top_lang(&r), "ja" | "zh-Hans" | "zh-Hant"),
         "W1 top should be ja/zh-family, got: {r:?}"
     );
+    let has_ja = has_lang(&r, "ja");
+    let has_zh = has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant");
+    assert!(has_ja && has_zh, "W1 should expose both ja and zh: {r:?}");
 }
 
 // --- Single language, phrase examples ---
@@ -144,15 +149,18 @@ fn m2_en_carrier_with_simplified_chinese_embedded() {
 
 #[test]
 fn m3_japanese_carrier_with_chinese_examples() {
-    // The SDD case expects ambiguous status with LLM picking ja as primary.
-    // v1 (no LLM) will pick ja as primary deterministically; status may be resolved
-    // because kana dominates. We only assert top is ja.
+    // The SDD case expects ambiguous status with the LLM picking ja as primary.
+    // v2 (no LLM) reaches the same primary deterministically because kana
+    // dominates; tightened: assert primary == ja AND zh-Hans visible as a
+    // candidate via Layer 5 dictionary overlap.
     let r = identify_lines(&[
         "日本語の文の中に 中文老师在大学教中文 という中国語の例文が含まれている場合、システムは日本語を主言語として扱い、中国語部分を別のセグメントとして検出する必要があります。",
         "この入力では 先生 という言葉が日本語にも中国語にも存在するため、王先生今天不在 という中国語の文脈を使って判断することが重要です。",
         "日本語では 先生は大学で日本語を教えています と言えますが、中国語では 王老师在大学教中文 のように表現するため、両方の言語が混在していることを検出する必要があります。",
     ]);
     assert_eq!(top_lang(&r), "ja", "M3: {r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("ja"));
+    assert!(has_lang(&r, "zh-Hans"), "M3 must surface zh-Hans candidate: {r:?}");
 }
 
 #[test]
@@ -163,14 +171,19 @@ fn m4_four_language_meta_discussion() {
         "A real user may write Please translate câu này sang tiếng Việt: 田中先生は大学で日本語を教えています, so the library needs to detect English, Vietnamese, and Japanese in one line.",
     ]);
     assert_eq!(top_lang(&r), "en-US", "M4: {r:?}");
-    // Should see at least two of: vi-VN, ja, zh-Hans as low-confidence candidates.
+    // Tightened: SDD expects all four embedded language families to appear as candidates.
     let embedded_count = ["vi-VN", "ja", "zh-Hans"]
         .iter()
         .filter(|l| has_lang(&r, l))
         .count();
     assert!(
-        embedded_count >= 2,
-        "M4 should expose multiple embedded languages: {r:?}"
+        embedded_count >= 3,
+        "M4 should expose ≥3 embedded language candidates: {r:?}"
+    );
+    // Segments should report at least one ja span (the long Japanese sentence).
+    assert!(
+        r.segments.iter().any(|s| s.language == "ja"),
+        "M4 should have at least one ja segment: {r:?}"
     );
 }
 

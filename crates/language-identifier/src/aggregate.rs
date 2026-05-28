@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::layers::dictionary::DictionarySignal;
+use crate::layers::function_words::FunctionWordSignal;
 use crate::layers::ngram::NgramSignal;
 use crate::layers::orthography::OrthoSignals;
 use crate::layers::script::ScriptCounts;
@@ -9,82 +11,46 @@ pub struct AggregateInput<'a> {
     pub counts: &'a ScriptCounts,
     pub ortho: &'a OrthoSignals,
     pub ngram: &'a NgramSignal,
+    pub function_words: &'a FunctionWordSignal,
+    pub dictionary: &'a DictionarySignal,
 }
 
+const FUNCTION_WORD_PER_HIT: f32 = 0.02;
+const FUNCTION_WORD_CAP: f32 = 0.10;
+const DICT_EXCLUSIVE_PER_HIT: f32 = 0.03;
+const DICT_EXCLUSIVE_CAP: f32 = 0.20;
+const DICT_SHARED_PER_HIT: f32 = 0.01;
+const DICT_SHARED_CAP: f32 = 0.10;
+
 pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
-    let total = input.counts.supported_total() as f32;
-    if total == 0.0 {
-        return vec![];
-    }
-
     let mut w: BTreeMap<String, f32> = BTreeMap::new();
-    let add = |w: &mut BTreeMap<String, f32>, lang: &str, val: f32| {
-        *w.entry(lang.to_string()).or_insert(0.0) += val;
-    };
 
-    let latin_w = input.counts.latin as f32 / total;
-    let kana_w = input.counts.kana() as f32 / total;
-    let han_w = input.counts.han as f32 / total;
-    let hangul_w = input.counts.hangul as f32 / total;
-
-    if hangul_w > 0.0 {
-        add(&mut w, "ko", hangul_w);
+    let total = input.counts.supported_total() as f32;
+    if total > 0.0 {
+        accumulate_script_weights(&mut w, &input);
     }
 
-    // Latin: split between en-US and vi-VN based on VI markers.
-    if latin_w > 0.0 {
-        let latin_count = input.counts.latin as f32;
-        let vi_density = input.ortho.vi_markers as f32 / latin_count;
-
-        if vi_density >= 0.10 {
-            // Strong VI signal across the Latin segment: claim it all for Vietnamese.
-            add(&mut w, "vi-VN", latin_w);
-        } else if input.ortho.vi_markers >= 1 {
-            // Weak VI signal: a small slice of Latin belongs to vi as embedded content.
-            let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
-            add(&mut w, "vi-VN", vi_share);
-            add(&mut w, "en-US", latin_w - vi_share);
-        } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
-            // n-gram tie-breaker: VI bigrams strongly outweigh EN bigrams.
-            add(&mut w, "vi-VN", latin_w);
-        } else {
-            add(&mut w, "en-US", latin_w);
-        }
+    // Layer 4 — function words.
+    for (lang, n) in &input.function_words.per_language {
+        let bonus = (*n as f32 * FUNCTION_WORD_PER_HIT).min(FUNCTION_WORD_CAP);
+        *w.entry(lang.clone()).or_insert(0.0) += bonus;
     }
 
-    // Kana + Han
-    if kana_w > 0.0 {
-        // Kana present: Japanese is the structural carrier. Kana proportion goes to ja.
-        add(&mut w, "ja", kana_w);
-        if han_w > 0.0 {
-            // If Hans/Hant markers are present alongside kana, split some Han to that variant
-            // (the diagram's mixed JA_ZH case).
-            let han_count = input.counts.han as f32;
-            if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
-                let frac =
-                    (input.ortho.hans_markers as f32 / han_count).clamp(0.0, 0.5);
-                add(&mut w, "zh-Hans", han_w * frac);
-                add(&mut w, "ja", han_w * (1.0 - frac));
-            } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
-                let frac =
-                    (input.ortho.hant_markers as f32 / han_count).clamp(0.0, 0.5);
-                add(&mut w, "zh-Hant", han_w * frac);
-                add(&mut w, "ja", han_w * (1.0 - frac));
-            } else {
-                // No markers or conflicting markers: all Han goes to ja (kana spine wins).
-                add(&mut w, "ja", han_w);
-            }
-        }
-    } else if han_w > 0.0 {
-        // No kana: this is Chinese or kanji-only Japanese.
-        if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
-            add(&mut w, "zh-Hans", han_w);
-        } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
-            add(&mut w, "zh-Hant", han_w);
-        } else {
-            // Mixed or no markers: ambiguous between ja (kanji-only) and zh (variant unclear).
-            add(&mut w, "ja", han_w * 0.5);
-            add(&mut w, "zh", han_w * 0.5);
+    // Layer 5 — dictionary.
+    for (lang, n) in &input.dictionary.exclusive_per_language {
+        let bonus = (*n as f32 * DICT_EXCLUSIVE_PER_HIT).min(DICT_EXCLUSIVE_CAP);
+        *w.entry(lang.clone()).or_insert(0.0) += bonus;
+    }
+    for (lang, n) in &input.dictionary.shared_per_language {
+        let bonus = (*n as f32 * DICT_SHARED_PER_HIT).min(DICT_SHARED_CAP);
+        *w.entry(lang.clone()).or_insert(0.0) += bonus;
+    }
+
+    // Renormalize so weights sum to 1.0.
+    let sum: f32 = w.values().sum();
+    if sum > 0.0 {
+        for v in w.values_mut() {
+            *v /= sum;
         }
     }
 
@@ -96,8 +62,76 @@ pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
             confidence: round2(confidence),
         })
         .collect();
-    candidates.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     candidates
+}
+
+fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInput<'_>) {
+    let total = input.counts.supported_total() as f32;
+    let add = |w: &mut BTreeMap<String, f32>, lang: &str, val: f32| {
+        *w.entry(lang.to_string()).or_insert(0.0) += val;
+    };
+
+    let latin_w = input.counts.latin as f32 / total;
+    let kana_w = input.counts.kana() as f32 / total;
+    let han_w = input.counts.han as f32 / total;
+    let hangul_w = input.counts.hangul as f32 / total;
+
+    if hangul_w > 0.0 {
+        add(w, "ko", hangul_w);
+    }
+
+    if latin_w > 0.0 {
+        let latin_count = input.counts.latin as f32;
+        let vi_density = input.ortho.vi_markers as f32 / latin_count;
+
+        if vi_density >= 0.10 {
+            add(w, "vi-VN", latin_w);
+        } else if input.ortho.vi_markers >= 1 {
+            let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
+            add(w, "vi-VN", vi_share);
+            add(w, "en-US", latin_w - vi_share);
+        } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
+            add(w, "vi-VN", latin_w);
+        } else {
+            add(w, "en-US", latin_w);
+        }
+    }
+
+    if kana_w > 0.0 {
+        add(w, "ja", kana_w);
+        if han_w > 0.0 {
+            let han_count = input.counts.han as f32;
+            if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
+                let frac = (input.ortho.hans_markers as f32 / han_count).clamp(0.0, 0.5);
+                add(w, "zh-Hans", han_w * frac);
+                add(w, "ja", han_w * (1.0 - frac));
+            } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
+                let frac = (input.ortho.hant_markers as f32 / han_count).clamp(0.0, 0.5);
+                add(w, "zh-Hant", han_w * frac);
+                add(w, "ja", han_w * (1.0 - frac));
+            } else {
+                add(w, "ja", han_w);
+            }
+        }
+    } else if han_w > 0.0 {
+        if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
+            add(w, "zh-Hans", han_w);
+        } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
+            add(w, "zh-Hant", han_w);
+        } else {
+            // No kana, no markers — dictionary signals (Layer 5) will tip the
+            // balance. Distribute Han evenly across the three possibilities to
+            // surface them all as candidates.
+            add(w, "ja", han_w * 0.34);
+            add(w, "zh-Hans", han_w * 0.33);
+            add(w, "zh-Hant", han_w * 0.33);
+        }
+    }
 }
 
 fn round2(x: f32) -> f32 {

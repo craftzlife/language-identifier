@@ -24,6 +24,10 @@ pub fn detect(input: &Normalized) -> OrthoSignals {
     sig
 }
 
+pub fn is_vi_marker_char(c: char) -> bool {
+    is_vi_marker(c)
+}
+
 fn is_vi_marker(c: char) -> bool {
     // Strong Vietnamese markers — chars that are essentially exclusive to Vietnamese
     // among the languages we support.
