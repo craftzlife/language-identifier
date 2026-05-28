@@ -1,0 +1,572 @@
+# Language Identifier Library — Software Design Document
+
+**Status:** Draft
+**Date:** 2026-05-28
+**Diagram source of truth:** [`language-identifier-library.drawio`](./language-identifier-library.drawio)
+
+> Sections derived directly from the diagram are unmarked. Sections that go beyond the diagram are explicitly marked **(inferred)** so a reader can tell specification from extrapolation.
+
+---
+
+## 1. Overview
+
+The Language Identifier Library identifies the natural language(s) of an arbitrary text input. It accepts a single string (a word, a phrase) or a `string[]` array where each element is one line of a paragraph, normalizes and combines the content, then runs the text through a multi-layer scoring pipeline. The library returns a ranked list of candidate languages with calibrated confidence scores, a primary language, and a status that distinguishes between confident results and ambiguous / mixed / unknown cases.
+
+The library is designed to be robust on real-world text such as dictionary lookups, language-learning apps, and editor text-selection flows where input may contain embedded segments of a second language inside a primary one (for example, an English sentence quoting a Japanese phrase).
+
+---
+
+## 2. Goals
+
+- Accept word, phrase, and multi-line paragraph (`string[]`) inputs.
+- Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`, `en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …).
+- Return a ranked candidate list with per-candidate `confidence`, a `primaryLanguage`, and a `status` of `resolved | ambiguous | mixed | unknown | unsupported`.
+- Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, context, and — when needed — an LLM.
+- Surface a `reason` that explains the decision so the result is auditable.
+
+## 3. Non-goals *(inferred)*
+
+- Not a translator.
+- Not a script converter (e.g. Hans ↔ Hant, romanization).
+- Not a general-purpose NLP pipeline (no POS, parsing, NER beyond what language ID needs).
+- Not a per-token segmentation API in v1; the schema returns a single `primaryLanguage`. Per-segment / embedded-segment output is listed under Open Questions.
+
+---
+
+## 4. Input
+
+The library accepts either:
+
+| Input shape | Example |
+| --- | --- |
+| Single string | `"先生"`, `"university teacher"` |
+| `string[]` (lines) | `["田中先生は大学で日本語を教えています。", "学生たちは毎日授業に参加し、新しい言葉や文法を学んでいます。", ...]` |
+
+> *From the diagram:* "The input can be a word, a phrase, or a piece of text (a string array, where each element represents a line of text). The library will normalize and combine all of this to determine the language of the input content."
+
+---
+
+## 5. Output schema
+
+```json
+{
+  "candidates": [
+    { "language": "ja", "confidence": 0.52 },
+    { "language": "zh-Hans", "confidence": 0.48 }
+  ],
+  "primaryLanguage": "ja",
+  "status": "resolved|ambiguous|mixed|unknown|unsupported",
+  "reason": "..."
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `candidates` | array of `{ language: string, confidence: number }` | Ranked candidates with calibrated confidence in `[0, 1]`. |
+| `primaryLanguage` | BCP 47 string | The selected primary language. May still be present when `status = "ambiguous"` (chosen via tie-breakers, e.g. an LLM check on context). |
+| `status` | enum | See below. |
+| `reason` | string or array of strings | Human-readable justification (single string for simple cases; an array of explanation lines for mixed-language cases). |
+
+### `status` values
+
+| Value | Meaning (derived from the diagram's test cases) |
+| --- | --- |
+| `resolved` | A single language clearly dominates; the confidence gap between #1 and the next candidate is significant. |
+| `ambiguous` | Candidate confidences are close and an LLM / context check was required, or the input is too short to disambiguate (e.g. a single Han character valid in both Japanese and Chinese). |
+| `mixed` | Multiple languages coexist in the input as first-class content (not just embedded snippets). |
+| `unknown` | No supported language could be identified. |
+| `unsupported` | The script or language detected is not in the supported set. |
+
+---
+
+## 6. Supported language codes
+
+BCP 47 tags. The diagram lists the following (with `...` indicating extensibility):
+
+```
+en
+vi
+ja
+ko
+zh
+zh-Hans
+zh-Hant
+en-US
+en-GB
+vi-VN
+ja-JP
+zh-CN
+zh-TW
+...
+```
+
+---
+
+## 7. Architecture: layered pipeline
+
+The library is a staged pipeline. Input flows from the top (text input) through every layer to a final calibration step, then out to the JSON output. Earlier layers are cheap and deterministic; later layers are progressively more expensive and probabilistic.
+
+| # | Layer | Purpose (from diagram) |
+| --- | --- | --- |
+| 0 | Normalization | Normalize the text to reduce noise and make the input stable before analysis. |
+| 1 | Character / byte n-gram scoring | Estimate candidate languages based on character or byte patterns commonly seen in each language. |
+| 2 | Script & Unicode signal | Detect writing systems and Unicode blocks to quickly narrow down possible languages. |
+| 3 | Orthographic / writing-system rules | Use language-specific writing clues such as kana, Vietnamese diacritics, simplified/traditional characters, or special punctuation. |
+| 4 | Function words / particles / stopwords | Identify common function words, particles, or stop-words that reveal the natural structure of a language. |
+| 5 | Dictionary / lexicon matching | Check whether words or phrases exist in one or more language dictionaries and detect shared ambiguous terms. |
+| 6 | Morphology / tokenization hints | Analyze word forms and tokenization patterns to detect grammar-specific language signals. |
+| 7 | Context window scoring | Use surrounding sentences, paragraphs, or page context to resolve ambiguous words or phrases. |
+| 8 | User preference / app state | Use the user's selected language, learning preference, lookup history, or app state as a secondary signal. |
+| 9 | Lightweight ML classifier / embedding classifier | Use a lightweight model to combine features and rerank candidate languages. |
+| 10 | LLM / Foundation Model resolver | Use a stronger model for deeper contextual reasoning when earlier layers remain uncertain. |
+| — | Final calibration & ambiguity handling | Calibrate the final confidence score and decide whether to return a language or mark the result as ambiguous. |
+
+### 7.1 Layer notes
+
+- **Layers 0–6** are deterministic, fast, and dictionary/rule-based. They produce the initial candidate distribution.
+- **Layer 7 (Context window)** uses surrounding text to disambiguate single words shared across languages — critical for dictionary-app flows where a user selects one CJK character.
+- **Layer 8 (User preference)** is a soft prior, not an override. It nudges the candidate distribution toward the user's known target language.
+- **Layer 9 (Lightweight ML)** reranks the candidates produced by 0–8 using learned features.
+- **Layer 10 (LLM)** is the most expensive step and is reserved for cases where earlier layers stay ambiguous. The diagram explicitly references using a "Local LLM" to validate context in the mixed-language `JA_ZH` test case.
+
+### 7.2 Final calibration & ambiguity handling
+
+After every active layer reports, the calibration step:
+
+1. Combines scores into a single confidence distribution over candidate languages.
+2. Measures the **confidence gap** between the top candidate and the next.
+   - A **significant** gap → `status: "resolved"`, the top candidate becomes `primaryLanguage`, other languages present in text are reported as embedded segments (low confidence, but still listed).
+   - A **small** gap → `status: "ambiguous"`. Layer 10 (LLM) may be invoked to choose a `primaryLanguage` from the close set.
+3. When multiple languages coexist as first-class content rather than embedded snippets → `status: "mixed"`.
+
+---
+
+## 8. Test cases
+
+All inputs and outputs below are reproduced verbatim from the diagram. They define the expected behavior of the library.
+
+### 8.1 Single language — word examples
+
+#### Case W1: Ambiguous Han character shared by JA and ZH
+
+**INPUT:** `先生 | 教師 | 先生 | 老师`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "ja", "confidence": 0.50 },
+    { "language": "zh", "confidence": 0.50 }
+  ],
+  "status": "ambiguous",
+  "reason": "This word is used in all above languages"
+}
+```
+
+#### Case W2: Latin word resolves to English
+
+**INPUT:** `Teacher | Profesor`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": ""
+}
+```
+
+### 8.2 Single language — phrase examples
+
+#### Case P1: Japanese phrases
+
+**INPUT:** `大学の先生 | 日本語の教師 | 高校の先生 | 英語を教える先生 | 尊敬される教授`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "ja", "confidence": 1 }
+  ],
+  "status": "resolved",
+  "reason": "Japanese kana is detected among Han's characters",
+  "primaryLanguage": "ja"
+}
+```
+
+#### Case P2: Simplified Chinese phrases
+
+**INPUT:** `大学老师 | 中文老师 | 高中老师 | 教英语的老师 | 受人尊敬的教授`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "zh-Hans", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "Chinese simplified",
+  "primaryLanguage": "zh-Hans"
+}
+```
+
+#### Case P3: English phrases
+
+**INPUT:** `university teacher | Japanese language teacher | high school teacher | teacher of English | respected professor`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "All English US detected",
+  "primaryLanguage": "en-US"
+}
+```
+
+#### Case P4: Vietnamese phrases
+
+**INPUT:** `giáo viên đại học | giáo viên tiếng Nhật | giáo viên trung học | thầy giáo dạy tiếng Anh | giáo sư được kính trọng`
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "vi", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "All Vietnamese detected",
+  "primaryLanguage": "vi"
+}
+```
+
+### 8.3 Single language — paragraph examples (`string[]`)
+
+#### Case G1: Japanese paragraph
+
+**INPUT:**
+
+```json
+[
+  "田中先生は大学で日本語を教えています。",
+  "学生たちは毎日授業に参加し、新しい言葉や文法を学んでいます。",
+  "先生はとても親切で、難しい質問にも丁寧に答えてくれます。"
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "ja", "confidence": 1 }
+  ],
+  "status": "resolved",
+  "reason": "Japanese kana is detected among Han's characters",
+  "primaryLanguage": "ja"
+}
+```
+
+#### Case G2: Simplified Chinese paragraph
+
+**INPUT:**
+
+```json
+[
+  "王老师在大学教中文。",
+  "学生们每天来上课，学习新的词语和语法。",
+  "老师很有耐心，也会认真回答学生的问题。"
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "zh-Hans", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "Chinese simplified",
+  "primaryLanguage": "zh-Hans"
+}
+```
+
+#### Case G3: English paragraph
+
+**INPUT:**
+
+```json
+[
+  "Mr. Tanaka is a teacher at the university.",
+  "His students attend class every day and learn new vocabulary and grammar.",
+  "He is very kind and always answers difficult questions carefully."
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "All English US detected",
+  "primaryLanguage": "en-US"
+}
+```
+
+#### Case G4: Vietnamese paragraph
+
+**INPUT:**
+
+```json
+[
+  "Thầy Tanaka là giáo viên ở trường đại học.",
+  "Các sinh viên tham gia lớp học mỗi ngày và học thêm từ vựng cũng như ngữ pháp mới.",
+  "Thầy rất tận tâm và luôn trả lời cẩn thận những câu hỏi khó của sinh viên."
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "vi", "confidence": 1.0 }
+  ],
+  "status": "resolved",
+  "reason": "All Vietnamese detected",
+  "primaryLanguage": "vi"
+}
+```
+
+### 8.4 Mixed language — paragraph examples (`string[]`)
+
+#### Case M1: `EN_JA` — English carrier, Japanese embedded
+
+**INPUT:**
+
+```json
+[
+  "When the user selects the word 先生 from a Japanese article, the library should not only look at the word itself but also analyze the surrounding sentence, such as 先生は大学で日本語を教えています。",
+  "This dictionary app should detect that the main sentence is English, while the embedded phrase 日本語を勉強する belongs to Japanese and provides useful context for the selected word.",
+  "If a user writes I want to understand the meaning of 大学の先生 in this sentence, the detector should recognize that English is the main language and Japanese appears as an embedded phrase."
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 0.74 },
+    { "language": "ja", "confidence": 0.05 }
+  ],
+  "status": "resolved",
+  "reason": [
+    "There are US English and Japanese (Han traditional combined using with Kana characters), so language code [en-US, ja] are picked candidates",
+    "English words is 74.68%, Japanese Kana is 5.61%",
+    "The candidate confidence gap is significant so en-US is picked as the primary language, Japanese text is just embedded language segment"
+  ],
+  "primaryLanguage": "en-US"
+}
+```
+
+#### Case M2: `EN_ZH` — English carrier, Simplified Chinese embedded
+
+**INPUT:**
+
+```json
+[
+  "When the user selects the word 先生 from a Chinese article, the library should inspect the full sentence, such as 王先生今天在大学教中文, before deciding whether the text is Chinese or Japanese.",
+  "This app should understand that the sentence is mainly English, but the phrase 中文老师在大学上课 is Chinese and should be treated as an embedded language segment.",
+  "If the input says Please explain why 老师 and 先生 can both refer to a teacher or a respectful title in Chinese, the detector should mark English as the main language and Chinese as embedded content."
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 0.74 },
+    { "language": "zh-Hans", "confidence": 0.05 }
+  ],
+  "status": "resolved",
+  "reason": [
+    "There are US English and Han simplified. The phrases embedded here (王先生今天在大学教中文 and 中文老师在大学上课) follow Chinese grammar rules directly without any Japanese particles. The characters '老师' (teacher), '学' (study/university), and '国' (implied in country terms) are explicitly written in their Simplified Chinese forms. No Japanese Kana Presence. therefor language code [en-US, zh-Hans] are picked candidates",
+    "English words is 78.49%, Chinese Simplified is 4.37%",
+    "The candidate confidence gap is significant so en-US is picked as the primary language, Chinese Simplified text is just embedded language segment"
+  ],
+  "primaryLanguage": "en-US"
+}
+```
+
+#### Case M3: `JA_ZH` — Japanese carrier with Chinese examples, ambiguity broken by LLM
+
+**INPUT:**
+
+```json
+[
+  "日本語の文の中に 中文老师在大学教中文 という中国語の例文が含まれている場合、システムは日本語を主言語として扱い、中国語部分を別のセグメントとして検出する必要があります。",
+  "この入力では 先生 という言葉が日本語にも中国語にも存在するため、王先生今天不在 という中国語の文脈を使って判断することが重要です。",
+  "日本語では 先生は大学で日本語を教えています と言えますが、中国語では 王老师在大学教中文 のように表現するため、両方の言語が混在していることを検出する必要があります。"
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "ja", "confidence": 0.39 },
+    { "language": "zh-Hant", "confidence": 0.30 },
+    { "language": "zh-Hans", "confidence": 0.09 }
+  ],
+  "status": "ambiguous",
+  "reason": [
+    "The high presence of Kana (39.37%) spread evenly across the entire text acts as the structural spine, overall sentence grammar and carrier language is Japanese (picked as the primaryLanguage). Words like 先生 or 大学 make up 30.43% of the text and are valid in Chinese and Japanese. Characters 老师 is strictly Simplified Chinese and never used in Japanese. Therefor language code [ja, zh-Hant, zh-Hans] are picked candidates",
+    "Japanese Kana is 39.37%, Chinese Traditional is 30.43%, Chinese Simplified is 9.42%",
+    "The candidate confidence gap is small, so detection status is 'ambiguous'. Local LLM is used to validated the context of input text, Japanese is primaryLanguage, Chinese text is just embedded language segment"
+  ],
+  "primaryLanguage": "en-US"
+}
+```
+
+> **Note:** The `primaryLanguage` value `"en-US"` in this case appears inconsistent with the reason text, which says "Japanese is primaryLanguage". Preserved verbatim from the diagram; should be reconciled (likely should be `"ja"`).
+
+#### Case M4: `EN_JA_ZH_VI` — four-language meta-discussion
+
+**INPUT:**
+
+```json
+[
+  "This language detection library should support English, tiếng Việt, 日本語, and 中文 in the same input, especially when a user explains that 先生 can appear in both Japanese and Chinese contexts.",
+  "When the input says Tôi muốn compare the Japanese sentence 先生は大学で日本語を教えています with the Chinese sentence 王老师在大学教中文, the detector should return a mixed-language result instead of forcing one language.",
+  "A real user may write Please translate câu này sang tiếng Việt: 田中先生は大学で日本語を教えています, so the library needs to detect English, Vietnamese, and Japanese in one line."
+]
+```
+
+**OUTPUT:**
+
+```json
+{
+  "candidates": [
+    { "language": "en-US", "confidence": 0.66 },
+    { "language": "vi-VN", "confidence": 0.06 },
+    { "language": "zh-Hant", "confidence": 0.05 },
+    { "language": "ja", "confidence": 0.02 },
+    { "language": "zh-Hans", "confidence": 0.00 }
+  ],
+  "status": "ambiguous",
+  "reason": [
+    "The input acts as a meta-language discussion where English functions as the carrier script across all three segments. Vietnamese is injected through short colloquial phrases sharing the Latin alphabet framework but identified by exclusive diacritic combinations (tiếng Việt, Tôi muốn). The CJK cluster contains overlapping Hanzi/Kanji (先生, 大学) which natively maps to both Japanese and Traditional Chinese, though specific Kana indicators (は, で, を) anchor the target examples to Japanese, while a single instance of 老师 targets Simplified Chinese. Therefore, [en-US, vi-VN, zh-Hant, ja] are selected as the primary candidates.",
+    "English is 66.42%, Vietnamese is 6.42%, Chinese Traditional/Kanji is 5.87%, Japanese Kana is 2.94%, Chinese Simplified is 0.37%",
+    "Multiple distinct language systems coexist within single-sentence boundaries, rendering a single-result classification invalid. Contextual mapping verifies that English handles the primary syntax framework, while Vietnamese, Japanese, and Chinese serve strictly as nested, embedded reference segments."
+  ],
+  "primaryLanguage": "en-US"
+}
+```
+
+### 8.5 Mixed language inputs — pending expected outputs
+
+These mix combinations appear as INPUT examples in the diagram (page 1 / page 5 corpus block) but have no paired OUTPUT block. They are listed here as known scenarios the library must handle once expected outputs are defined.
+
+#### `EN_VI`
+
+```json
+[
+  "The user may write an English sentence like I want to translate giáo viên tiếng Nhật into Japanese, so the detector should identify English as the main language and Vietnamese as an embedded phrase.",
+  "In a language learning app, a sentence such as Please explain the difference between thầy giáo, giáo viên, and giáo sư contains English structure but several Vietnamese terms.",
+  "When the input contains I am building a feature that helps users understand cụm từ tiếng Việt trong câu dài, the detector should recognize both English and Vietnamese."
+]
+```
+
+#### `VI_JA`
+
+```json
+[
+  "Tôi muốn hệ thống nhận diện được rằng câu này chủ yếu là tiếng Việt, nhưng cụm 先生は大学で日本語を教えています là tiếng Nhật và cần được xử lý như một đoạn nhúng.",
+  "Khi người dùng chọn từ 先生 trong câu tiếng Nhật như 先生はとても親切です, ứng dụng nên dùng cả ngữ cảnh xung quanh thay vì chỉ dựa vào một từ đơn lẻ.",
+  "Ứng dụng học ngôn ngữ cần hiểu rằng câu Tôi đang học cách dùng cụm 大学の先生 trong tiếng Nhật có cả tiếng Việt và một cụm tiếng Nhật."
+]
+```
+
+#### `VI_ZH`
+
+```json
+[
+  "Tôi muốn thư viện phát hiện rằng câu này chủ yếu là tiếng Việt, nhưng cụm 王先生今天在大学教中文 là tiếng Trung và không nên bị nhận nhầm thành tiếng Nhật.",
+  "Khi người dùng nhập câu Hãy giải thích sự khác nhau giữa 老师 và 先生 trong tiếng Trung, hệ thống nên nhận diện tiếng Việt là ngôn ngữ chính và tiếng Trung là nội dung được nhúng.",
+  "Ứng dụng nên xử lý tốt những câu như Tôi đang đọc một ví dụ tiếng Trung: 这位老师很有耐心, trong đó phần đầu là tiếng Việt còn phần sau là tiếng Trung."
+]
+```
+
+---
+
+## 9. Non-functional considerations *(inferred)*
+
+The diagram is silent on hard numbers. The points below are reasonable expectations implied by the layered architecture; they should be confirmed before implementation.
+
+| Concern | Expectation |
+| --- | --- |
+| **Latency** | Layers 0–6 are constant-time over input length and should be < 1 ms for short input. Layer 7 (context) scales with surrounding text. Layer 9 (ML) is bounded. Layer 10 (LLM) is the dominant cost and should only fire when needed. |
+| **Determinism** | Layers 0–8 are deterministic. Layers 9–10 are probabilistic; the calibration step should produce stable outputs given the same model versions. |
+| **Memory** | Layer 5 (dictionaries) dominates static memory; should be lazy-loaded per supported language. |
+| **Throughput** | The fast path (layers 0–6 only) is expected to be the common case; the LLM path should be measured but is acceptable for interactive use (word lookup, paragraph at a time), not high-throughput batch. |
+| **Offline operation** | Layers 0–9 must work offline. Layer 10 may require a local-LLM option (the `JA_ZH` test case explicitly mentions "Local LLM"). |
+
+---
+
+## 10. Error handling *(inferred)*
+
+Behavior for edge cases not covered explicitly in the diagram:
+
+| Condition | Result |
+| --- | --- |
+| Empty string or empty array | `{ status: "unknown", candidates: [] }` |
+| Whitespace-only / punctuation-only input | `{ status: "unknown", candidates: [] }` |
+| Script not in supported set (e.g. Arabic, Thai when only en/vi/ja/ko/zh are configured) | `{ status: "unsupported", candidates: [] }` |
+| Layer 10 (LLM) unavailable while needed | Fall back to the highest-confidence Layer 9 candidate; report `status: "ambiguous"` with a reason noting the fallback. |
+| Conflicting strong signals across layers | `status: "ambiguous"` per the diagram's "confidence gap is small" rule. |
+
+---
+
+## 11. Security & privacy *(inferred)*
+
+- **Input data exposure:** If Layer 10 calls a remote model, input text leaves the device. The library should expose a configuration to disable Layer 10, restrict it to a local model, or require user opt-in for remote calls.
+- **User preference (Layer 8):** Treated as private local data; never sent to external services as part of language identification.
+- **No persistence:** The library should not retain input text after a call returns.
+- **Logging:** Reasons returned in the output may quote portions of input. Consumers logging the output should be aware that input fragments may surface.
+
+---
+
+## 12. Open questions & future work *(inferred)*
+
+1. **Confidence-gap threshold.** What numeric gap counts as "significant" vs. "small"? The test cases show gaps of `0.69` (Case M1: 0.74 − 0.05) as significant and `0.09` (Case M3: 0.39 − 0.30) as small, but no formal threshold is defined.
+2. **Layer 10 deployment.** Is the LLM bundled (local, e.g. small on-device model) or remote? Case M3 says "Local LLM is used", which suggests a local model is part of the design.
+3. **API surface for Layer 8.** How does the host application supply user preference / app state to the library? Constructor option? Per-call argument?
+4. **Per-segment output.** The diagram repeatedly refers to "embedded language segment" but the schema only exposes a single `primaryLanguage`. Should the schema be extended with a `segments: [{ language, start, end }]` field for mixed input?
+5. **Inconsistent `primaryLanguage` in Case M3.** Reason text says Japanese is the primary language, but the JSON shows `"primaryLanguage": "en-US"`. Confirm which is correct.
+6. **Status `"mixed"`.** Declared in the enum but no test case produces it — currently mixed-language inputs return `"resolved"` or `"ambiguous"`. Define precisely when `"mixed"` is the right status (the four-language Case M4 returns `"ambiguous"`, so the rule isn't simply "two or more languages present").
+7. **Expected outputs for `EN_VI`, `VI_JA`, `VI_ZH`.** Listed in §8.5 as pending — fill in once decided.
+
+---
+
+## 13. Source
+
+The authoritative diagram is [`language-identifier-library.drawio`](./language-identifier-library.drawio) in this repository. When this document and the diagram disagree, treat the diagram as the source for **architecture** and this document as the source for **prose specification** of input/output, status semantics, and edge cases.

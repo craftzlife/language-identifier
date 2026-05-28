@@ -1,0 +1,5 @@
+/target
+
+# drawio editor autosave/backups
+.$*.drawio.bkp
+*.drawio.bkp
