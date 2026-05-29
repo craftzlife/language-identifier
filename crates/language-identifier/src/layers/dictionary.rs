@@ -11,7 +11,7 @@ const LEXICON_ZH_HANT: &str = include_str!("../data/lexicon_zh_hant.txt");
 const LEXICON_VI: &str = include_str!("../data/lexicon_vi.txt");
 const LEXICON_KO: &str = include_str!("../data/lexicon_ko.txt");
 
-pub const LANGUAGES: &[&str] = &["en-US", "ja", "zh-Hans", "zh-Hant", "vi-VN", "ko"];
+pub const LANGUAGES: &[&str] = &["en", "ja", "zh-Hans", "zh-Hant", "vi", "ko"];
 
 /// Exposed for the function-words layer, which derives its tables from the
 /// top N entries of each lexicon at load time.
@@ -21,11 +21,11 @@ pub fn raw_lexicon_for_function_words(lang: &str) -> &'static str {
 
 fn raw_for(lang: &str) -> &'static str {
     match lang {
-        "en-US" => LEXICON_EN,
+        "en" => LEXICON_EN,
         "ja" => LEXICON_JA,
         "zh-Hans" => LEXICON_ZH_HANS,
         "zh-Hant" => LEXICON_ZH_HANT,
-        "vi-VN" => LEXICON_VI,
+        "vi" => LEXICON_VI,
         "ko" => LEXICON_KO,
         _ => "",
     }
@@ -47,11 +47,11 @@ fn lexicon(lang: &str) -> &'static HashSet<&'static str> {
     static EMPTY: OnceLock<HashSet<&'static str>> = OnceLock::new();
 
     let cell = match lang {
-        "en-US" => &EN,
+        "en" => &EN,
         "ja" => &JA,
         "zh-Hans" => &ZH_HANS,
         "zh-Hant" => &ZH_HANT,
-        "vi-VN" => &VI,
+        "vi" => &VI,
         "ko" => &KO,
         _ => &EMPTY,
     };
@@ -91,7 +91,7 @@ pub fn score(input: &Normalized) -> DictionarySignal {
         let mut langs: Vec<&'static str> = Vec::new();
         for &lang in LANGUAGES {
             let lex = lexicon(lang);
-            let probe: &str = if lang == "en-US" || lang == "vi-VN" {
+            let probe: &str = if lang == "en" || lang == "vi" {
                 lower.as_str()
             } else {
                 tok.as_str()
@@ -115,9 +115,7 @@ pub fn score(input: &Normalized) -> DictionarySignal {
                     .entry((*lang).into())
                     .or_insert(0) += 1;
             } else {
-                *sig.shared_per_language
-                    .entry((*lang).into())
-                    .or_insert(0) += 1;
+                *sig.shared_per_language.entry((*lang).into()).or_insert(0) += 1;
             }
         }
     }
@@ -146,7 +144,12 @@ fn extract_cjk_tokens(input: &Normalized, out: &mut Vec<String>) {
         .chars
         .iter()
         .copied()
-        .filter(|&c| matches!(classify(c), Script::Han | Script::Hiragana | Script::Katakana | Script::Hangul))
+        .filter(|&c| {
+            matches!(
+                classify(c),
+                Script::Han | Script::Hiragana | Script::Katakana | Script::Hangul
+            )
+        })
         .collect();
 
     // 2-, 3-, and 4-char sliding windows. 1-char tokens are too noisy and
@@ -171,7 +174,7 @@ mod tests {
     fn english_tokens_resolve_to_en_exclusively() {
         let n = normalize("teacher professor university student");
         let s = score(&n);
-        assert!(s.exclusive_per_language.get("en-US").copied().unwrap_or(0) >= 2);
+        assert!(s.exclusive_per_language.get("en").copied().unwrap_or(0) >= 2);
         assert_eq!(s.exclusive_per_language.get("ja").copied().unwrap_or(0), 0);
     }
 
@@ -191,7 +194,7 @@ mod tests {
     fn vietnamese_tokens_resolve_to_vi() {
         let n = normalize("giáo viên đại học");
         let s = score(&n);
-        assert!(s.hits_per_language.get("vi-VN").copied().unwrap_or(0) >= 1);
+        assert!(s.hits_per_language.get("vi").copied().unwrap_or(0) >= 1);
     }
 
     #[test]
@@ -206,7 +209,11 @@ mod tests {
     fn lexicons_load_with_expected_size() {
         for &lang in LANGUAGES {
             let lex = lexicon(lang);
-            assert!(lex.len() >= 9_000, "{lang} lexicon too small: {}", lex.len());
+            assert!(
+                lex.len() >= 9_000,
+                "{lang} lexicon too small: {}",
+                lex.len()
+            );
         }
     }
 }

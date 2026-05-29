@@ -38,9 +38,8 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     let dict = dictionary::score(&normalized);
     let morph = morphology::score(&normalized);
     let context = context_window::score(&normalized);
-    let ml_scores: Option<Vec<(String, f32)>> = opts
-        .ml_classifier
-        .map(|c| c.classify(&normalized.text));
+    let ml_scores: Option<Vec<(String, f32)>> =
+        opts.ml_classifier.map(|c| c.classify(&normalized.text));
 
     // Layer 9 unsupported-language short-circuit. When the classifier
     // is confident the input is in a language outside the supported
@@ -116,13 +115,12 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         let attr_summary = if morph.latin_attribution.is_empty() {
             String::new()
         } else {
-            format!(" ({} Latin tokens attributed)", morph.latin_attribution.len())
+            format!(
+                " ({} Latin tokens attributed)",
+                morph.latin_attribution.len()
+            )
         };
-        notes.push(format!(
-            "Morphology — {}{}",
-            parts.join(", "),
-            attr_summary
-        ));
+        notes.push(format!("Morphology — {}{}", parts.join(", "), attr_summary));
     }
     if !context.sentences.is_empty() {
         let mut parts: Vec<String> = context
@@ -143,10 +141,7 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         ));
     }
     if let Some(scores) = ml_scores.as_ref() {
-        let mut parts: Vec<String> = scores
-            .iter()
-            .map(|(l, c)| format!("{l}:{c:.2}"))
-            .collect();
+        let mut parts: Vec<String> = scores.iter().map(|(l, c)| format!("{l}:{c:.2}")).collect();
         parts.sort();
         notes.push(format!("Layer 9 (ML classifier) — {}", parts.join(", ")));
     }
@@ -192,9 +187,8 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
                     ));
                     cal.primary_language = Some(primary);
                 }
-                None => notes.push(
-                    "Layer 10 (LLM) returned no decision — keeping pre-LLM primary".into(),
-                ),
+                None => notes
+                    .push("Layer 10 (LLM) returned no decision — keeping pre-LLM primary".into()),
             }
         }
     }
@@ -209,7 +203,10 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     }
 }
 
-fn pick_han_strategy(counts: &script::ScriptCounts, ortho: &orthography::OrthoSignals) -> HanStrategy {
+fn pick_han_strategy(
+    counts: &script::ScriptCounts,
+    ortho: &orthography::OrthoSignals,
+) -> HanStrategy {
     if counts.kana() > 0 {
         HanStrategy::JapaneseClaimsHan
     } else if ortho.hans_markers > 0 && ortho.hant_markers == 0 {
@@ -220,4 +217,3 @@ fn pick_han_strategy(counts: &script::ScriptCounts, ortho: &orthography::OrthoSi
         HanStrategy::HanAmbiguous
     }
 }
-

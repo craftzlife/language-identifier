@@ -84,24 +84,18 @@ The library accepts either:
 
 ## 6. Supported language codes
 
-BCP 47 tags. The diagram lists the following (with `...` indicating extensibility):
+BCP 47 tags. The current canonical set is:
 
 ```
 en
 vi
 ja
 ko
-zh
 zh-Hans
 zh-Hant
-en-US
-en-GB
-vi-VN
-ja-JP
-zh-CN
-zh-TW
-...
 ```
+
+Locale subtags (`en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …) are deliberately deferred to a later milestone; they will be added through the centralized `bcp47` module without changing call sites.
 
 ---
 

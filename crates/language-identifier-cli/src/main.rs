@@ -68,7 +68,9 @@ fn main() -> ExitCode {
 
     let opts = IdentifyOptions {
         #[cfg(feature = "ml-fasttext")]
-        ml_classifier: classifier.as_ref().map(|c| c as &dyn language_identifier::MlClassifier),
+        ml_classifier: classifier
+            .as_ref()
+            .map(|c| c as &dyn language_identifier::MlClassifier),
         #[cfg(not(feature = "ml-fasttext"))]
         ml_classifier: None,
         llm_resolver: None,
@@ -76,7 +78,7 @@ fn main() -> ExitCode {
 
     let result = if args.len() == 1 && args[0] == "-" {
         let stdin = io::stdin();
-        let lines: Vec<String> = stdin.lock().lines().filter_map(Result::ok).collect();
+        let lines: Vec<String> = stdin.lock().lines().map_while(Result::ok).collect();
         identify_lines_with(&lines, &opts)
     } else {
         let text = args.join(" ");

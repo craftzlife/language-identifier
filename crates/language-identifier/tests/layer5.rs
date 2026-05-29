@@ -12,7 +12,7 @@ fn dictionary_promotes_recognized_english() {
     // No Vietnamese diacritics. Pure recognized English vocab.
     let r = identify("teacher professor university student");
     assert_eq!(r.status, Status::Resolved);
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
 }
 
 #[test]

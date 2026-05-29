@@ -54,9 +54,35 @@ fn is_vi_marker(c: char) -> bool {
 fn is_hans_only(c: char) -> bool {
     matches!(
         c,
-        '师' | '时' | '这' | '让' | '给' | '们' | '经' | '还' | '实' | '进'
-            | '见' | '问' | '谁' | '长' | '说' | '应' | '听' | '个' | '观' | '议'
-            | '态' | '资' | '产' | '风' | '调' | '语' | '请' | '认' | '识' | '记'
+        '师' | '时'
+            | '这'
+            | '让'
+            | '给'
+            | '们'
+            | '经'
+            | '还'
+            | '实'
+            | '进'
+            | '见'
+            | '问'
+            | '谁'
+            | '长'
+            | '说'
+            | '应'
+            | '听'
+            | '个'
+            | '观'
+            | '议'
+            | '态'
+            | '资'
+            | '产'
+            | '风'
+            | '调'
+            | '语'
+            | '请'
+            | '认'
+            | '识'
+            | '记'
     )
 }
 
@@ -148,7 +174,10 @@ mod tests {
                 s.hant_markers >= 1,
                 "expected at least one Hant marker in {word:?}: {s:?}"
             );
-            assert_eq!(s.hans_markers, 0, "{word:?} must not register as Hans: {s:?}");
+            assert_eq!(
+                s.hans_markers, 0,
+                "{word:?} must not register as Hans: {s:?}"
+            );
         }
     }
 

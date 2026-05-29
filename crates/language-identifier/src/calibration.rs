@@ -94,7 +94,10 @@ pub fn calibrate(
         };
     }
 
-    let strong = ranked.iter().filter(|c| c.confidence >= MIXED_FLOOR).count();
+    let strong = ranked
+        .iter()
+        .filter(|c| c.confidence >= MIXED_FLOOR)
+        .count();
     if strong >= 2 && top_conf < MIXED_TOP_CEILING && total_visible >= MIXED_MIN_VISIBLE {
         return Calibrated {
             status: Status::Mixed,

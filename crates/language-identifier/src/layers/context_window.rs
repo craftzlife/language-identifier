@@ -70,7 +70,7 @@ pub fn score(input: &Normalized) -> ContextWindowSignal {
         .iter()
         .map(|(k, v)| (k.clone(), *v))
         .collect();
-    counts.sort_by(|a, b| b.1.cmp(&a.1));
+    counts.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     if counts.len() >= 2 {
         let top = counts[0].1;
@@ -154,7 +154,7 @@ fn is_sentence_terminator(c: char) -> bool {
         '.' | '!' | '?'
             | '。'  // U+3002 CJK full stop
             | '！'  // U+FF01 fullwidth exclamation
-            | '？'  // U+FF1F fullwidth question mark
+            | '？' // U+FF1F fullwidth question mark
     )
 }
 
@@ -211,11 +211,11 @@ fn classify_sentence(chars: &[char]) -> Option<&'static str> {
         // VI density threshold: 5% within Latin chars (lower than the global
         // 10% switch because per-sentence the signal is more concentrated).
         if vi_markers > 0 && (vi_markers as f32 / latin as f32) >= 0.05 {
-            return Some("vi-VN");
+            return Some("vi");
         }
         // Mixed latin + han within one sentence with no kana → carrier is
         // probably the Latin script's language.
-        return Some("en-US");
+        return Some("en");
     }
     None
 }
@@ -225,18 +225,66 @@ fn classify_sentence(chars: &[char]) -> Option<&'static str> {
 fn is_hans_only(c: char) -> bool {
     matches!(
         c,
-        '师' | '时' | '这' | '让' | '给' | '们' | '经' | '还' | '实' | '进'
-            | '见' | '问' | '谁' | '长' | '说' | '应' | '听' | '个' | '观' | '议'
-            | '态' | '资' | '产' | '风' | '调' | '语' | '请' | '认' | '识' | '记'
+        '师' | '时'
+            | '这'
+            | '让'
+            | '给'
+            | '们'
+            | '经'
+            | '还'
+            | '实'
+            | '进'
+            | '见'
+            | '问'
+            | '谁'
+            | '长'
+            | '说'
+            | '应'
+            | '听'
+            | '个'
+            | '观'
+            | '议'
+            | '态'
+            | '资'
+            | '产'
+            | '风'
+            | '调'
+            | '语'
+            | '请'
+            | '认'
+            | '识'
+            | '记'
     )
 }
 
 fn is_hant_only(c: char) -> bool {
     matches!(
         c,
-        '學' | '國' | '來' | '們' | '經' | '這' | '實' | '會' | '說' | '應'
-            | '讓' | '與' | '沒' | '聽' | '寫' | '認' | '識' | '觀' | '議' | '態'
-            | '資' | '產' | '風' | '調' | '請' | '記'
+        '學' | '國'
+            | '來'
+            | '們'
+            | '經'
+            | '這'
+            | '實'
+            | '會'
+            | '說'
+            | '應'
+            | '讓'
+            | '與'
+            | '沒'
+            | '聽'
+            | '寫'
+            | '認'
+            | '識'
+            | '觀'
+            | '議'
+            | '態'
+            | '資'
+            | '產'
+            | '風'
+            | '調'
+            | '請'
+            | '記'
     )
 }
 
@@ -249,7 +297,7 @@ mod tests {
     fn pure_english_paragraph_one_winner() {
         let n = normalize("The teacher asked a question. The student answered.");
         let s = score(&n);
-        assert_eq!(s.per_language.get("en-US").copied(), Some(2));
+        assert_eq!(s.per_language.get("en").copied(), Some(2));
         assert!(!s.multi_language);
     }
 

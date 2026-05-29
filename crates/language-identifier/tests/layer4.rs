@@ -7,13 +7,13 @@ use language_identifier::{identify, Status};
 fn english_function_words_keep_english_resolved() {
     let r = identify("the and or but if then else of for");
     assert_eq!(r.status, Status::Resolved);
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
 }
 
 #[test]
 fn vietnamese_function_words_keep_vi_resolved() {
     let r = identify("là của và có không được để một");
-    assert_eq!(r.primary_language.as_deref(), Some("vi-VN"));
+    assert_eq!(r.primary_language.as_deref(), Some("vi"));
 }
 
 #[test]

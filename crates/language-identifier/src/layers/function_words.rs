@@ -30,11 +30,11 @@ fn table_for(lang: &str) -> &'static HashSet<&'static str> {
     static EMPTY: OnceLock<HashSet<&'static str>> = OnceLock::new();
 
     let cell = match lang {
-        "en-US" => &EN,
+        "en" => &EN,
         "ja" => &JA,
         "zh-Hans" => &ZH_HANS,
         "zh-Hant" => &ZH_HANT,
-        "vi-VN" => &VI,
+        "vi" => &VI,
         "ko" => &KO,
         _ => &EMPTY,
     };
@@ -71,7 +71,7 @@ pub fn score(input: &Normalized) -> FunctionWordSignal {
 
     for tok in &latin_tokens {
         let lower = tok.to_lowercase();
-        for &lang in &["en-US", "vi-VN"] {
+        for &lang in &["en", "vi"] {
             if table_for(lang).contains(lower.as_str()) {
                 *sig.per_language.entry(lang.into()).or_insert(0) += 1;
             }
@@ -130,7 +130,7 @@ mod tests {
     fn english_stopwords_counted() {
         let n = normalize("the teacher and the student of the school");
         let s = score(&n);
-        assert!(s.per_language.get("en-US").copied().unwrap_or(0) >= 3);
+        assert!(s.per_language.get("en").copied().unwrap_or(0) >= 3);
     }
 
     #[test]
@@ -153,7 +153,7 @@ mod tests {
     fn vietnamese_stopwords_counted() {
         let n = normalize("là của và có không được");
         let s = score(&n);
-        assert!(s.per_language.get("vi-VN").copied().unwrap_or(0) >= 3);
+        assert!(s.per_language.get("vi").copied().unwrap_or(0) >= 3);
     }
 
     #[test]

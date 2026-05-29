@@ -96,15 +96,15 @@ fn attribute(c: char, ortho: &OrthoSignals, han: HanStrategy) -> Option<&'static
         },
         Script::Latin => {
             if crate::layers::orthography::is_vi_marker_char(c) {
-                Some("vi-VN")
+                Some("vi")
             } else if c.is_ascii_alphabetic() {
-                Some("en-US")
+                Some("en")
             } else if ortho.vi_markers > 0 {
                 // Latin char inside a VI-rich region: bias to VI so a single
                 // VI segment doesn't get fragmented around plain Latin letters.
-                Some("vi-VN")
+                Some("vi")
             } else {
-                Some("en-US")
+                Some("en")
             }
         }
         Script::Other => None,
@@ -165,7 +165,7 @@ mod tests {
         let o = orthography::detect(&n);
         let segs = extract(&n, &o, HanStrategy::HanAmbiguous, &[]);
         assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].language, "en-US");
+        assert_eq!(segs[0].language, "en");
         assert_eq!(&n.text[segs[0].start..segs[0].end], "Teacher and student");
     }
 
@@ -176,10 +176,7 @@ mod tests {
         // No kana in this input, but the test fixture acts as if Han = ja by strategy.
         let segs = extract(&n, &o, HanStrategy::JapaneseClaimsHan, &[]);
         let langs: Vec<&str> = segs.iter().map(|s| s.language.as_str()).collect();
-        assert!(
-            langs.contains(&"en-US") && langs.contains(&"ja"),
-            "{segs:?}"
-        );
+        assert!(langs.contains(&"en") && langs.contains(&"ja"), "{segs:?}");
         let ja_span = segs.iter().find(|s| s.language == "ja").unwrap();
         assert_eq!(&n.text[ja_span.start..ja_span.end], "先生");
     }
@@ -189,7 +186,7 @@ mod tests {
         let n = normalize("xin chào bạn");
         let o = orthography::detect(&n);
         let segs = extract(&n, &o, HanStrategy::HanAmbiguous, &[]);
-        assert!(segs.iter().any(|s| s.language == "vi-VN"));
+        assert!(segs.iter().any(|s| s.language == "vi"));
     }
 
     #[test]

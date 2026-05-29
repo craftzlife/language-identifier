@@ -5,7 +5,7 @@ fn english_and_japanese_balanced_is_mixed() {
     let r = identify("Hello こんにちは world ありがとう");
     assert_eq!(r.status, Status::Mixed, "{r:?}");
     let langs: Vec<&str> = r.candidates.iter().map(|c| c.language.as_str()).collect();
-    assert!(langs.contains(&"en-US") && langs.contains(&"ja"));
+    assert!(langs.contains(&"en") && langs.contains(&"ja"));
 }
 
 #[test]
@@ -14,19 +14,17 @@ fn english_and_korean_balanced_is_mixed() {
     let r = identify("Hello world from the 선생님은 학생을 가르칩니다 today");
     assert_eq!(r.status, Status::Mixed, "{r:?}");
     let langs: Vec<&str> = r.candidates.iter().map(|c| c.language.as_str()).collect();
-    assert!(langs.contains(&"en-US") && langs.contains(&"ko"));
+    assert!(langs.contains(&"en") && langs.contains(&"ko"));
 }
 
 #[test]
 fn english_and_vietnamese_balanced_is_mixed() {
     // Same-script (Latin) mixing — v3 Layer 6 per-token attribution makes
     // this possible. EN words and VI words split proportionally.
-    let r = identify(
-        "Hello world this is teacher meets giáo viên đại học người thầy được kính",
-    );
+    let r = identify("Hello world this is teacher meets giáo viên đại học người thầy được kính");
     assert_eq!(r.status, Status::Mixed, "{r:?}");
     let langs: Vec<&str> = r.candidates.iter().map(|c| c.language.as_str()).collect();
-    assert!(langs.contains(&"en-US") && langs.contains(&"vi-VN"));
+    assert!(langs.contains(&"en") && langs.contains(&"vi"));
 }
 
 #[test]

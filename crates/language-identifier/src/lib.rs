@@ -5,6 +5,7 @@
 //! ML, LLM) are stubs to be added without breaking the public API.
 
 mod aggregate;
+mod bcp47;
 mod calibration;
 mod layers;
 mod llm;
@@ -13,9 +14,10 @@ mod pipeline;
 mod segments;
 mod types;
 
-pub use layers::ml::{MlClassifier, UnsupportedSignal};
+pub use bcp47::{from_iso639, is_supported_iso639};
 #[cfg(feature = "ml-fasttext")]
 pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
+pub use layers::ml::{MlClassifier, UnsupportedSignal};
 pub use llm::LlmResolver;
 pub use options::IdentifyOptions;
 pub use types::{Candidate, IdentifyResult, Segment, Status};

@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use language_identifier::{
-    identify, identify_with, Candidate, IdentifyOptions, MlClassifier, LlmResolver, Status,
+    identify, identify_with, Candidate, IdentifyOptions, LlmResolver, MlClassifier, Status,
 };
 
 /// Trivial `MlClassifier` that ignores the input and returns a fixed
@@ -151,7 +151,7 @@ fn llm_resolver_skipped_for_resolved_input() {
     assert_eq!(r.status, Status::Resolved);
     assert_eq!(
         r.primary_language.as_deref(),
-        Some("vi-VN"),
+        Some("vi"),
         "resolver must not touch a Resolved primary"
     );
     assert_eq!(resolver.calls(), 0);

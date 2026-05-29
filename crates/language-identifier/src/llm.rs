@@ -36,9 +36,5 @@ pub trait LlmResolver: Send + Sync {
     /// Returning a language tag outside `candidates` is permitted but
     /// discouraged — it surfaces in the output without an accompanying
     /// confidence value from the deterministic layers.
-    fn resolve(
-        &self,
-        normalized_text: &str,
-        candidates: &[Candidate],
-    ) -> Option<String>;
+    fn resolve(&self, normalized_text: &str, candidates: &[Candidate]) -> Option<String>;
 }

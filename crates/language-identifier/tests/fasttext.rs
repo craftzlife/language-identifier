@@ -50,7 +50,7 @@ fn english_paragraph_keeps_english_primary() {
         llm_resolver: None,
     };
     let r = identify_with("This is an English sentence about cats.", &opts);
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"), "{r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("en"), "{r:?}");
     assert!(
         r.reasons
             .iter()
@@ -68,7 +68,7 @@ fn vietnamese_paragraph_keeps_vietnamese_primary() {
         llm_resolver: None,
     };
     let r = identify_with("Đây là một câu tiếng Việt về mèo.", &opts);
-    assert_eq!(r.primary_language.as_deref(), Some("vi-VN"), "{r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("vi"), "{r:?}");
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn classifier_reused_across_calls() {
     };
     let a = identify_with("Hello there.", &opts);
     let b = identify_with("How are you today?", &opts);
-    assert_eq!(a.primary_language.as_deref(), Some("en-US"));
-    assert_eq!(b.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(a.primary_language.as_deref(), Some("en"));
+    assert_eq!(b.primary_language.as_deref(), Some("en"));
     assert_eq!(a.status, Status::Resolved);
 }

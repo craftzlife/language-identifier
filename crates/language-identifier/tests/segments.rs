@@ -9,7 +9,7 @@ fn pure_english_has_one_segment_matching_primary() {
     // Single-language input still emits one segment covering the whole text.
     let r = identify("The teacher asked a question");
     assert_eq!(r.segments.len(), 1, "{r:?}");
-    assert_eq!(r.segments[0].language, "en-US");
+    assert_eq!(r.segments[0].language, "en");
 }
 
 #[test]
@@ -17,7 +17,7 @@ fn embedded_cjk_in_english_produces_cjk_segment() {
     // 先生 with no markers and no kana surfaces as the umbrella zh tag.
     // (Disambiguating to ja vs zh-Hans/Hant requires Layer 7+ context.)
     let r = identify("Please read 先生 carefully and slowly");
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
     let cjk = r
         .segments
         .iter()
@@ -30,7 +30,7 @@ fn embedded_cjk_in_english_produces_cjk_segment() {
 fn embedded_japanese_kana_text_produces_ja_segment() {
     // Kana presence in the embedded snippet should make it ja unambiguously.
     let r = identify("Please read 先生はとても親切です carefully");
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
     let ja = find(&r.segments, "ja").unwrap_or_else(|| panic!("missing ja: {r:?}"));
     assert!(ja.end > ja.start);
 }
@@ -38,7 +38,7 @@ fn embedded_japanese_kana_text_produces_ja_segment() {
 #[test]
 fn embedded_chinese_in_english_produces_zh_segment() {
     let r = identify("Please explain the word 老师 in Chinese");
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
     let zh = find(&r.segments, "zh-Hans");
     assert!(zh.is_some(), "expected zh-Hans segment: {r:?}");
 }
@@ -67,10 +67,7 @@ fn single_language_paragraph_has_all_segments_in_one_language() {
         "The student answered correctly.",
     ]);
     assert!(!r.segments.is_empty(), "{r:?}");
-    assert!(
-        r.segments.iter().all(|s| s.language == "en-US"),
-        "{r:?}"
-    );
+    assert!(r.segments.iter().all(|s| s.language == "en"), "{r:?}");
 }
 
 #[test]
@@ -81,7 +78,7 @@ fn segments_present_for_mixed_input() {
     ]);
     assert!(!r.segments.is_empty());
     assert!(find(&r.segments, "ja").is_some(), "{r:?}");
-    assert!(find(&r.segments, "en-US").is_some(), "{r:?}");
+    assert!(find(&r.segments, "en").is_some(), "{r:?}");
 }
 
 #[test]
@@ -101,7 +98,7 @@ fn vi_segment_text_is_the_vi_words() {
     let vi = r
         .segments
         .iter()
-        .find(|s| s.language == "vi-VN")
+        .find(|s| s.language == "vi")
         .expect("expected vi segment");
     assert_eq!(vi.text, "giáo viên tiếng Nhật");
 }

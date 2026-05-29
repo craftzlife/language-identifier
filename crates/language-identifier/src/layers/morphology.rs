@@ -64,16 +64,16 @@ fn attribute_one(token: &str) -> Option<&'static str> {
 
     // Rule 1: any VI-only diacritic ⇒ vi-VN, full stop.
     if token.chars().any(is_vi_marker_char) {
-        return Some("vi-VN");
+        return Some("vi");
     }
 
     let lower = token.to_lowercase();
-    let in_en = dictionary::contains("en-US", &lower);
-    let in_vi = dictionary::contains("vi-VN", &lower);
+    let in_en = dictionary::contains("en", &lower);
+    let in_vi = dictionary::contains("vi", &lower);
 
     match (in_en, in_vi) {
-        (true, false) => Some("en-US"),
-        (false, true) => Some("vi-VN"),
+        (true, false) => Some("en"),
+        (false, true) => Some("vi"),
         (true, true) => Some(disambiguate_by_shape(&lower)),
         (false, false) => None,
     }
@@ -90,11 +90,11 @@ fn disambiguate_by_shape(token: &str) -> &'static str {
     let has_vi_final = VI_FINALS.iter().any(|p| token.ends_with(p));
 
     if has_vi_initial && has_vi_final {
-        "vi-VN"
+        "vi"
     } else {
         // VI shape is suggestive but not exclusive — `th`, `ng`, `ch` all
         // appear in English too. Default to en-US when only one indicator hits.
-        "en-US"
+        "en"
     }
 }
 
@@ -104,7 +104,14 @@ fn score_cjk_endings(input: &Normalized, sig: &mut MorphologySignal) {
     // Japanese verb / copula endings. These are 2–3-char sequences that
     // Layer 4 (TOP_N = 50 of each lexicon) does not always capture.
     const JA_ENDINGS: &[&str] = &[
-        "です", "ます", "ました", "ません", "ている", "ない", "だった", "でした",
+        "です",
+        "ます",
+        "ました",
+        "ません",
+        "ている",
+        "ない",
+        "だった",
+        "でした",
     ];
     for pat in JA_ENDINGS {
         let n = text.matches(pat).count();
@@ -142,14 +149,14 @@ mod tests {
         let n = normalize("teacher");
         let s = score(&n);
         assert_eq!(s.latin_attribution.len(), 1);
-        assert_eq!(s.latin_attribution[0].language, "en-US");
+        assert_eq!(s.latin_attribution[0].language, "en");
     }
 
     #[test]
     fn vi_diacritic_word_attributes_to_vi() {
         let n = normalize("thầy");
         let s = score(&n);
-        assert_eq!(s.latin_attribution[0].language, "vi-VN");
+        assert_eq!(s.latin_attribution[0].language, "vi");
     }
 
     #[test]
@@ -161,7 +168,7 @@ mod tests {
         // May fall through to None if `nhanh` isn't in either lexicon at all;
         // in that case test passes vacuously. If in vi only or both, should be vi.
         if !s.latin_attribution.is_empty() {
-            assert_eq!(s.latin_attribution[0].language, "vi-VN");
+            assert_eq!(s.latin_attribution[0].language, "vi");
         }
     }
 
@@ -171,7 +178,7 @@ mod tests {
         let n = normalize("la");
         let s = score(&n);
         if !s.latin_attribution.is_empty() {
-            assert_eq!(s.latin_attribution[0].language, "en-US");
+            assert_eq!(s.latin_attribution[0].language, "en");
         }
     }
 
@@ -180,8 +187,8 @@ mod tests {
         let n = normalize("teacher giáo viên student");
         let s = score(&n);
         let langs: Vec<&str> = s.latin_attribution.iter().map(|a| a.language).collect();
-        assert!(langs.contains(&"en-US"));
-        assert!(langs.contains(&"vi-VN"));
+        assert!(langs.contains(&"en"));
+        assert!(langs.contains(&"vi"));
     }
 
     #[test]

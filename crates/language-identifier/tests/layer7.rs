@@ -16,15 +16,12 @@ fn pure_english_paragraph_stays_resolved() {
         "The student answered correctly.",
     ]);
     assert_eq!(r.status, Status::Resolved);
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
 }
 
 #[test]
 fn pure_japanese_paragraph_stays_resolved() {
-    let r = identify_lines(&[
-        "先生は親切です。",
-        "学生たちは熱心に勉強しています。",
-    ]);
+    let r = identify_lines(&["先生は親切です。", "学生たちは熱心に勉強しています。"]);
     assert_eq!(r.status, Status::Resolved);
     assert_eq!(r.primary_language.as_deref(), Some("ja"));
 }
@@ -65,16 +62,13 @@ fn alternating_en_and_ja_sentences_produces_multi_language() {
         "学生は元気です。",
     ]);
     // At minimum, both ja and en-US should be candidates.
-    assert!(has_lang(&r, "en-US"));
+    assert!(has_lang(&r, "en"));
     assert!(has_lang(&r, "ja"));
 }
 
 #[test]
 fn cjk_only_paragraph_one_winner() {
-    let r = identify_lines(&[
-        "王老师在大学教中文。",
-        "学生们每天来上课。",
-    ]);
+    let r = identify_lines(&["王老师在大学教中文。", "学生们每天来上课。"]);
     assert!(matches!(
         r.primary_language.as_deref(),
         Some("zh-Hans") | Some("zh-Hant")
@@ -84,21 +78,15 @@ fn cjk_only_paragraph_one_winner() {
 
 #[test]
 fn vi_paragraph_one_winner() {
-    let r = identify_lines(&[
-        "Thầy giáo dạy tiếng Việt.",
-        "Học sinh học rất chăm chỉ.",
-    ]);
-    assert_eq!(r.primary_language.as_deref(), Some("vi-VN"));
+    let r = identify_lines(&["Thầy giáo dạy tiếng Việt.", "Học sinh học rất chăm chỉ."]);
+    assert_eq!(r.primary_language.as_deref(), Some("vi"));
     assert_eq!(r.status, Status::Resolved);
 }
 
 #[test]
 fn paragraph_without_terminators_is_one_sentence() {
     // No periods in the lines — Layer 7 sees a single super-sentence.
-    let r = identify_lines(&[
-        "the teacher asked a question",
-        "先生は親切です",
-    ]);
+    let r = identify_lines(&["the teacher asked a question", "先生は親切です"]);
     // No assertion on multi_language because per-line splitting requires
     // terminators; this test just confirms no panic and reasonable output.
     assert!(!r.candidates.is_empty(), "{r:?}");
@@ -113,10 +101,8 @@ fn empty_input_unknown() {
 #[test]
 fn many_short_sentences_do_not_explode_runtime() {
     // 30 short sentences — well below the SENTENCE_CAP of 50.
-    let lines: Vec<String> = (0..30)
-        .map(|i| format!("Sentence number {i}."))
-        .collect();
+    let lines: Vec<String> = (0..30).map(|i| format!("Sentence number {i}.")).collect();
     let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
     let r = identify_lines(&refs);
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
 }

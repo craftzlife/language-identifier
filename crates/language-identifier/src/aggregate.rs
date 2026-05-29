@@ -124,7 +124,7 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
     }
 
     if latin_w > 0.0 {
-        let latin_count = input.counts.latin as usize;
+        let latin_count = input.counts.latin;
         let attr = &input.morphology.latin_attribution;
 
         if !attr.is_empty() {
@@ -138,17 +138,17 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
                 let len = a.end - a.start;
                 attributed_chars += len;
                 match a.language {
-                    "en-US" => en_chars += len,
-                    "vi-VN" => vi_chars += len,
+                    "en" => en_chars += len,
+                    "vi" => vi_chars += len,
                     _ => {}
                 }
             }
             let remainder = latin_count.saturating_sub(attributed_chars);
             if en_chars > 0 {
-                add(w, "en-US", en_chars as f32 / total);
+                add(w, "en", en_chars as f32 / total);
             }
             if vi_chars > 0 {
-                add(w, "vi-VN", vi_chars as f32 / total);
+                add(w, "vi", vi_chars as f32 / total);
             }
             if remainder > 0 {
                 // Fall through to v2 logic on the unattributed slice. Use the
@@ -158,24 +158,24 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
                 if input.ortho.vi_markers >= 1
                     && (input.ortho.vi_markers as f32 / latin_count as f32) >= 0.10
                 {
-                    add(w, "vi-VN", rem_w);
+                    add(w, "vi", rem_w);
                 } else {
-                    add(w, "en-US", rem_w);
+                    add(w, "en", rem_w);
                 }
             }
         } else {
             // No Layer 6 attribution — v2 path.
             let vi_density = input.ortho.vi_markers as f32 / latin_count as f32;
             if vi_density >= 0.10 {
-                add(w, "vi-VN", latin_w);
+                add(w, "vi", latin_w);
             } else if input.ortho.vi_markers >= 1 {
                 let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
-                add(w, "vi-VN", vi_share);
-                add(w, "en-US", latin_w - vi_share);
+                add(w, "vi", vi_share);
+                add(w, "en", latin_w - vi_share);
             } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
-                add(w, "vi-VN", latin_w);
+                add(w, "vi", latin_w);
             } else {
-                add(w, "en-US", latin_w);
+                add(w, "en", latin_w);
             }
         }
     }

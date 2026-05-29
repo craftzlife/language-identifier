@@ -17,7 +17,7 @@ fn has_lang(r: &language_identifier::IdentifyResult, lang: &str) -> bool {
 fn w2_english_latin_word() {
     let r = identify("Teacher Profesor");
     assert_eq!(r.status, Status::Resolved, "W2 status: {r:?}");
-    assert_eq!(top_lang(&r), "en-US", "W2 top: {r:?}");
+    assert_eq!(top_lang(&r), "en", "W2 top: {r:?}");
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn p3_english_phrases() {
         "university teacher Japanese language teacher high school teacher teacher of English respected professor",
     );
     assert_eq!(r.status, Status::Resolved, "P3: {r:?}");
-    assert_eq!(top_lang(&r), "en-US");
+    assert_eq!(top_lang(&r), "en");
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn p4_vietnamese_phrases() {
         "giáo viên đại học giáo viên tiếng Nhật giáo viên trung học thầy giáo dạy tiếng Anh giáo sư được kính trọng",
     );
     assert_eq!(r.status, Status::Resolved, "P4: {r:?}");
-    assert_eq!(top_lang(&r), "vi-VN");
+    assert_eq!(top_lang(&r), "vi");
 }
 
 // --- Paragraph examples ---
@@ -104,7 +104,7 @@ fn g3_english_paragraph() {
         "He is very kind and always answers difficult questions carefully.",
     ]);
     assert_eq!(r.status, Status::Resolved, "G3: {r:?}");
-    assert_eq!(top_lang(&r), "en-US");
+    assert_eq!(top_lang(&r), "en");
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn g4_vietnamese_paragraph() {
         "Thầy rất tận tâm và luôn trả lời cẩn thận những câu hỏi khó của sinh viên.",
     ]);
     assert_eq!(r.status, Status::Resolved, "G4: {r:?}");
-    assert_eq!(top_lang(&r), "vi-VN");
+    assert_eq!(top_lang(&r), "vi");
 }
 
 // --- Mixed language paragraphs ---
@@ -127,8 +127,8 @@ fn m1_en_carrier_with_japanese_embedded() {
         "This dictionary app should detect that the main sentence is English, while the embedded phrase 日本語を勉強する belongs to Japanese and provides useful context for the selected word.",
         "If a user writes I want to understand the meaning of 大学の先生 in this sentence, the detector should recognize that English is the main language and Japanese appears as an embedded phrase.",
     ]);
-    assert_eq!(top_lang(&r), "en-US", "M1: {r:?}");
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(top_lang(&r), "en", "M1: {r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
     assert!(has_lang(&r, "ja"), "M1 should expose ja as embedded: {r:?}");
 }
 
@@ -139,8 +139,8 @@ fn m2_en_carrier_with_simplified_chinese_embedded() {
         "This app should understand that the sentence is mainly English, but the phrase 中文老师在大学上课 is Chinese and should be treated as an embedded language segment.",
         "If the input says Please explain why 老师 and 先生 can both refer to a teacher or a respectful title in Chinese, the detector should mark English as the main language and Chinese as embedded content.",
     ]);
-    assert_eq!(top_lang(&r), "en-US", "M2: {r:?}");
-    assert_eq!(r.primary_language.as_deref(), Some("en-US"));
+    assert_eq!(top_lang(&r), "en", "M2: {r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("en"));
     assert!(
         has_lang(&r, "zh-Hans") || has_lang(&r, "zh"),
         "M2 should expose zh-Hans (or zh) as embedded: {r:?}"
@@ -161,8 +161,10 @@ fn m3_japanese_carrier_with_chinese_examples() {
     ]);
     assert_eq!(r.status, Status::Ambiguous, "M3 status: {r:?}");
     assert_eq!(r.primary_language.as_deref(), Some("ja"));
-    assert!(has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant"),
-        "M3 must surface a zh-* candidate: {r:?}");
+    assert!(
+        has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant"),
+        "M3 must surface a zh-* candidate: {r:?}"
+    );
 }
 
 #[test]
@@ -172,9 +174,9 @@ fn m4_four_language_meta_discussion() {
         "When the input says Tôi muốn compare the Japanese sentence 先生は大学で日本語を教えています with the Chinese sentence 王老师在大学教中文, the detector should return a mixed-language result instead of forcing one language.",
         "A real user may write Please translate câu này sang tiếng Việt: 田中先生は大学で日本語を教えています, so the library needs to detect English, Vietnamese, and Japanese in one line.",
     ]);
-    assert_eq!(top_lang(&r), "en-US", "M4: {r:?}");
+    assert_eq!(top_lang(&r), "en", "M4: {r:?}");
     // Tightened: SDD expects all four embedded language families to appear as candidates.
-    let embedded_count = ["vi-VN", "ja", "zh-Hans"]
+    let embedded_count = ["vi", "ja", "zh-Hans"]
         .iter()
         .filter(|l| has_lang(&r, l))
         .count();
@@ -198,8 +200,8 @@ fn m5_en_vi_carrier_with_vietnamese_embedded() {
         "In a language learning app, a sentence such as Please explain the difference between thầy giáo, giáo viên, and giáo sư contains English structure but several Vietnamese terms.",
         "When the input contains I am building a feature that helps users understand cụm từ tiếng Việt trong câu dài, the detector should recognize both English and Vietnamese.",
     ]);
-    assert_eq!(top_lang(&r), "en-US", "M5: {r:?}");
-    assert!(has_lang(&r, "vi-VN"), "M5 should expose vi-VN: {r:?}");
+    assert_eq!(top_lang(&r), "en", "M5: {r:?}");
+    assert!(has_lang(&r, "vi"), "M5 should expose vi-VN: {r:?}");
 }
 
 #[test]
@@ -209,7 +211,7 @@ fn m6_vi_carrier_with_japanese_embedded() {
         "Khi người dùng chọn từ 先生 trong câu tiếng Nhật như 先生はとても親切です, ứng dụng nên dùng cả ngữ cảnh xung quanh thay vì chỉ dựa vào một từ đơn lẻ.",
         "Ứng dụng học ngôn ngữ cần hiểu rằng câu Tôi đang học cách dùng cụm 大学の先生 trong tiếng Nhật có cả tiếng Việt và một cụm tiếng Nhật.",
     ]);
-    assert_eq!(top_lang(&r), "vi-VN", "M6: {r:?}");
+    assert_eq!(top_lang(&r), "vi", "M6: {r:?}");
     assert!(has_lang(&r, "ja"), "M6 should expose ja: {r:?}");
 }
 
@@ -220,7 +222,7 @@ fn m7_vi_carrier_with_simplified_chinese_embedded() {
         "Khi người dùng nhập câu Hãy giải thích sự khác nhau giữa 老师 và 先生 trong tiếng Trung, hệ thống nên nhận diện tiếng Việt là ngôn ngữ chính và tiếng Trung là nội dung được nhúng.",
         "Ứng dụng nên xử lý tốt những câu như Tôi đang đọc một ví dụ tiếng Trung: 这位老师很有耐心, trong đó phần đầu là tiếng Việt còn phần sau là tiếng Trung.",
     ]);
-    assert_eq!(top_lang(&r), "vi-VN", "M7: {r:?}");
+    assert_eq!(top_lang(&r), "vi", "M7: {r:?}");
     assert!(has_lang(&r, "zh-Hans"), "M7 should expose zh-Hans: {r:?}");
 }
 
@@ -251,13 +253,13 @@ fn katakana_only_phrase() {
 #[test]
 fn vietnamese_single_word_with_strong_marker() {
     let r = identify("thầy");
-    assert_eq!(top_lang(&r), "vi-VN");
+    assert_eq!(top_lang(&r), "vi");
 }
 
 #[test]
 fn vietnamese_word_with_horn_diacritic() {
     let r = identify("tương lai tươi sáng");
-    assert_eq!(top_lang(&r), "vi-VN");
+    assert_eq!(top_lang(&r), "vi");
 }
 
 #[test]
@@ -285,7 +287,7 @@ fn korean_paragraph() {
 fn korean_with_english_embedded() {
     let r = identify("선생님은 university에서 가르칩니다");
     assert_eq!(top_lang(&r), "ko", "{r:?}");
-    assert!(has_lang(&r, "en-US"));
+    assert!(has_lang(&r, "en"));
 }
 
 // --- False-positive guards (shared diacritics, neutral Latin) ---
@@ -294,29 +296,28 @@ fn korean_with_english_embedded() {
 fn french_diacritics_do_not_trigger_vietnamese() {
     // é à ç are Latin-1 Supplement, used widely beyond Vietnamese.
     let r = identify("café résumé naïve façade");
-    assert_eq!(top_lang(&r), "en-US", "{r:?}");
+    assert_eq!(top_lang(&r), "en", "{r:?}");
 }
 
 #[test]
 fn spanish_chars_do_not_trigger_vietnamese() {
     let r = identify("señor niño año");
-    assert_eq!(top_lang(&r), "en-US", "{r:?}");
+    assert_eq!(top_lang(&r), "en", "{r:?}");
 }
 
 #[test]
 fn alphanumeric_latin_still_resolves_english() {
     let r = identify("user123 password456 status789");
-    assert_eq!(top_lang(&r), "en-US");
+    assert_eq!(top_lang(&r), "en");
     assert_eq!(r.status, Status::Resolved);
 }
 
 #[test]
 fn english_with_single_embedded_vi_word() {
     // One Vietnamese word inside long English text shouldn't flip the primary.
-    let r = identify(
-        "I would like to learn the Vietnamese word thầy which means teacher in English",
-    );
-    assert_eq!(top_lang(&r), "en-US", "{r:?}");
+    let r =
+        identify("I would like to learn the Vietnamese word thầy which means teacher in English");
+    assert_eq!(top_lang(&r), "en", "{r:?}");
 }
 
 // --- Unsupported / Unknown branches ---
@@ -379,10 +380,7 @@ fn input_with_nfc_decomposed_form() {
     // unknown / unsupported). The exact language depends on lexicon overlap
     // — "café" happens to be in the VI lexicon as a loanword.
     let r = identify("cafe\u{0301}");
-    assert!(matches!(
-        top_lang(&r),
-        "en-US" | "vi-VN"
-    ), "{r:?}");
+    assert!(matches!(top_lang(&r), "en" | "vi"), "{r:?}");
     assert_ne!(r.status, language_identifier::Status::Unknown);
 }
 
@@ -396,18 +394,30 @@ fn json_output_uses_sdd_field_names() {
     assert!(json.contains("\"status\""));
     assert!(json.contains("\"reasons\""));
     // primaryLanguage is camelCase per SDD
-    assert!(json.contains("\"primaryLanguage\":\"en-US\""));
+    assert!(json.contains("\"primaryLanguage\":\"en\""));
     // status is lowercase per SDD
     assert!(json.contains("\"status\":\"resolved\""));
 }
 
 #[test]
 fn all_status_variants_serialize_lowercase() {
-    assert_eq!(serde_json::to_string(&Status::Resolved).unwrap(), "\"resolved\"");
-    assert_eq!(serde_json::to_string(&Status::Ambiguous).unwrap(), "\"ambiguous\"");
+    assert_eq!(
+        serde_json::to_string(&Status::Resolved).unwrap(),
+        "\"resolved\""
+    );
+    assert_eq!(
+        serde_json::to_string(&Status::Ambiguous).unwrap(),
+        "\"ambiguous\""
+    );
     assert_eq!(serde_json::to_string(&Status::Mixed).unwrap(), "\"mixed\"");
-    assert_eq!(serde_json::to_string(&Status::Unknown).unwrap(), "\"unknown\"");
-    assert_eq!(serde_json::to_string(&Status::Unsupported).unwrap(), "\"unsupported\"");
+    assert_eq!(
+        serde_json::to_string(&Status::Unknown).unwrap(),
+        "\"unknown\""
+    );
+    assert_eq!(
+        serde_json::to_string(&Status::Unsupported).unwrap(),
+        "\"unsupported\""
+    );
 }
 
 #[test]

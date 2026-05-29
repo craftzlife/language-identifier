@@ -5,35 +5,19 @@
 //!
 //! ## What this does and does not contribute
 //!
-//! The classifier maps fastText's coarse ISO 639 labels into the
-//! library's BCP 47 set:
-//!
-//! | fastText label    | mapped tag                             |
-//! | ----------------- | -------------------------------------- |
-//! | `__label__en`     | `en-US`                                |
-//! | `__label__vi`     | `vi-VN`                                |
-//! | `__label__ja`     | `ja`                                   |
-//! | `__label__ko`     | `ko`                                   |
-//! | `__label__zh`     | `zh-Hant` if input contains a known    |
-//! |                   | Traditional-only character; otherwise  |
-//! |                   | `zh-Hans` (the modern default).        |
-//! | all 171 others    | *dropped*                              |
-//!
-//! lid.176 emits a single `__label__zh` label without splitting Hans
-//! vs Hant. Rather than throw the signal away, we promote it to a
-//! concrete BCP 47 tag using a tiny ISO 639 → BCP 47 disambiguation
-//! check: scan the input for the Layer 3 `is_hant_only` character set
-//! and pick `zh-Hant` when any matches, otherwise default to
-//! `zh-Hans`. This is intentionally a coarse fallback — Layer 3's
-//! marker-based path is still authoritative for inputs with explicit
-//! Hans-only signals.
+//! The classifier delegates ISO 639 → BCP 47 translation to
+//! [`crate::bcp47`], which holds the canonical mapping table and the
+//! Tier 2 disambiguation logic (e.g. `zh` → `zh-Hans` / `zh-Hant`).
+//! Predictions whose label is outside the supported set are filtered
+//! out — see the module doc on `crate::bcp47` for the supported tags
+//! and the extension model.
 
 use std::path::PathBuf;
 
 use ::fasttext::FastText;
 
 use super::{MlClassifier, UnsupportedSignal};
-use crate::layers::orthography;
+use crate::bcp47;
 
 /// fastText-backed [`MlClassifier`] for Layer 9. Construct via
 /// [`FastTextClassifier::builder`].
@@ -90,25 +74,28 @@ impl FastTextClassifierBuilder {
 impl MlClassifier for FastTextClassifier {
     fn classify(&self, normalized_text: &str) -> Vec<(String, f32)> {
         let cleaned = scrub_newlines(normalized_text);
-        let has_hant = contains_hant_char(normalized_text);
+        // fastText is single-line; the Tier 2 disambiguator needs the
+        // original normalized text so its Hant-character scan sees
+        // exactly what every other layer sees.
         self.model
             .predict(&cleaned, self.top_k, 0.0)
             .into_iter()
-            .filter_map(|p| map_label(&p.label, has_hant).map(|tag| (tag.to_string(), p.prob)))
+            .filter_map(|p| {
+                bcp47::from_iso639(&p.label, normalized_text).map(|tag| (tag.to_string(), p.prob))
+            })
             .collect()
     }
 
     fn unsupported_signal(&self, normalized_text: &str) -> Option<UnsupportedSignal> {
         let cleaned = scrub_newlines(normalized_text);
         let top = self.model.predict(&cleaned, 1, 0.0).into_iter().next()?;
-        let code = top.label.strip_prefix("__label__").unwrap_or(&top.label);
-        // `zh` IS in the supported set — we drop it from `classify` for
-        // a different reason (variant disambiguation belongs to Layer
-        // 3). Treating it as "unsupported" here would wrongly downgrade
-        // Han inputs.
-        if is_supported_lid176_code(code) {
+        // `zh` IS in the supported set — variant disambiguation belongs
+        // to `bcp47::from_iso639`. Treating it as "unsupported" here
+        // would wrongly downgrade Han inputs.
+        if bcp47::is_supported_iso639(&top.label) {
             None
         } else {
+            let code = top.label.strip_prefix("__label__").unwrap_or(&top.label);
             Some(UnsupportedSignal {
                 label: code.to_string(),
                 confidence: top.prob,
@@ -144,88 +131,9 @@ fn scrub_newlines(s: &str) -> String {
         .collect()
 }
 
-fn map_label(raw: &str, has_hant: bool) -> Option<&'static str> {
-    let code = raw.strip_prefix("__label__").unwrap_or(raw);
-    match code {
-        "en" => Some("en-US"),
-        "vi" => Some("vi-VN"),
-        "ja" => Some("ja"),
-        "ko" => Some("ko"),
-        // ISO 639 → BCP 47 disambiguation for the umbrella `zh` label.
-        // See module doc-comment.
-        "zh" => Some(if has_hant { "zh-Hant" } else { "zh-Hans" }),
-        _ => None,
-    }
-}
-
-fn contains_hant_char(text: &str) -> bool {
-    text.chars().any(orthography::is_hant_only_char)
-}
-
-fn is_supported_lid176_code(code: &str) -> bool {
-    matches!(code, "en" | "vi" | "ja" | "ko" | "zh")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn label_mapping_supported() {
-        assert_eq!(map_label("__label__en", false), Some("en-US"));
-        assert_eq!(map_label("__label__vi", false), Some("vi-VN"));
-        assert_eq!(map_label("__label__ja", false), Some("ja"));
-        assert_eq!(map_label("__label__ko", false), Some("ko"));
-    }
-
-    #[test]
-    fn label_mapping_routes_zh_by_hant_signal() {
-        // ISO 639 `zh` with no Hant character defaults to Hans (the
-        // modern default per the design rule).
-        assert_eq!(map_label("__label__zh", false), Some("zh-Hans"));
-        // When the input contains a Hant-only character, prefer Hant.
-        assert_eq!(map_label("__label__zh", true), Some("zh-Hant"));
-    }
-
-    #[test]
-    fn label_mapping_drops_unrelated_languages() {
-        assert_eq!(map_label("__label__fr", false), None);
-        assert_eq!(map_label("__label__de", false), None);
-        assert_eq!(map_label("__label__zh-cn", false), None);
-        assert_eq!(map_label("__label__", false), None);
-    }
-
-    #[test]
-    fn label_mapping_tolerates_missing_prefix() {
-        assert_eq!(map_label("en", false), Some("en-US"));
-    }
-
-    #[test]
-    fn contains_hant_char_detects_hant_only() {
-        // `學` is in orthography's `is_hant_only` table.
-        assert!(contains_hant_char("學生"));
-    }
-
-    #[test]
-    fn contains_hant_char_misses_shared_or_hans_only() {
-        // `学生` uses the shinjitai/Hans form `学` — not Hant-only.
-        assert!(!contains_hant_char("学生"));
-        // Pure ASCII: no Han chars at all.
-        assert!(!contains_hant_char("Hello world"));
-    }
-
-    #[test]
-    fn is_supported_treats_zh_as_supported() {
-        assert!(is_supported_lid176_code("zh"));
-    }
-
-    #[test]
-    fn is_supported_rejects_unsupported_codes() {
-        assert!(!is_supported_lid176_code("fr"));
-        assert!(!is_supported_lid176_code("de"));
-        assert!(!is_supported_lid176_code("es"));
-        assert!(!is_supported_lid176_code(""));
-    }
 
     #[test]
     fn scrub_newlines_replaces_cr_and_lf() {
