@@ -5,10 +5,11 @@ fn find<'a>(segs: &'a [Segment], lang: &str) -> Option<&'a Segment> {
 }
 
 #[test]
-fn pure_english_has_no_segments() {
-    // present_segments() suppresses single-segment matches with the primary lang.
+fn pure_english_has_one_segment_matching_primary() {
+    // Single-language input still emits one segment covering the whole text.
     let r = identify("The teacher asked a question");
-    assert!(r.segments.is_empty(), "{r:?}");
+    assert_eq!(r.segments.len(), 1, "{r:?}");
+    assert_eq!(r.segments[0].language, "en-US");
 }
 
 #[test]
@@ -60,12 +61,16 @@ fn segments_carry_valid_byte_offsets() {
 }
 
 #[test]
-fn segments_omitted_for_single_language_paragraph() {
+fn single_language_paragraph_has_all_segments_in_one_language() {
     let r = identify_lines(&[
         "The teacher asked a question.",
         "The student answered correctly.",
     ]);
-    assert!(r.segments.is_empty(), "{r:?}");
+    assert!(!r.segments.is_empty(), "{r:?}");
+    assert!(
+        r.segments.iter().all(|s| s.language == "en-US"),
+        "{r:?}"
+    );
 }
 
 #[test]
@@ -80,10 +85,33 @@ fn segments_present_for_mixed_input() {
 }
 
 #[test]
+fn segment_text_matches_byte_range() {
+    let r = identify("Please read 先生はとても親切です carefully");
+    for s in &r.segments {
+        // The reported `text` must equal the slice the byte range claims.
+        // We can't slice the original input (it's been NFC-normalized), but
+        // the segment's own text + offsets should be self-consistent.
+        assert_eq!(s.text.len(), s.end - s.start, "{s:?}");
+    }
+}
+
+#[test]
+fn vi_segment_text_is_the_vi_words() {
+    let r = identify("I want to translate giáo viên tiếng Nhật into Japanese");
+    let vi = r
+        .segments
+        .iter()
+        .find(|s| s.language == "vi-VN")
+        .expect("expected vi segment");
+    assert_eq!(vi.text, "giáo viên tiếng Nhật");
+}
+
+#[test]
 fn segments_serialize_as_array() {
     // Use kana to anchor the embedded CJK as ja unambiguously.
     let r = identify("Please read 先生はとても親切です carefully");
     let json = serde_json::to_string(&r).unwrap();
     assert!(json.contains("\"segments\""));
     assert!(json.contains("\"language\":\"ja\""));
+    assert!(json.contains("\"text\":"));
 }

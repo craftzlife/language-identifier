@@ -41,6 +41,10 @@ pub struct Segment {
     pub start: usize,
     /// Byte offset into the normalized input text, exclusive.
     pub end: usize,
+    /// The actual text of this segment, i.e. the slice of the normalized
+    /// input between `start` and `end`. Carried in the output so callers can
+    /// read the segment without holding the original normalized text.
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +54,11 @@ pub struct IdentifyResult {
     pub primary_language: Option<String>,
     pub status: Status,
     pub reason: Reason,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub segments: Vec<Segment>,
+    /// The NFC-composed, whitespace-collapsed, control-stripped form of the
+    /// input that the pipeline actually analyzed. `Segment.start` and
+    /// `Segment.end` index into this string.
+    #[serde(rename = "normalizedText")]
+    pub normalized_text: String,
 }

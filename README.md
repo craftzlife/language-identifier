@@ -95,16 +95,22 @@ $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは wor
     "2 candidates each hold ≥0.20 confidence — input contains multiple languages as first-class content"
   ],
   "segments": [
-    { "language": "en-US", "start": 0,  "end": 5 },
-    { "language": "ja",    "start": 6,  "end": 21 },
-    { "language": "en-US", "start": 22, "end": 27 }
-  ]
+    { "language": "en-US", "start": 0,  "end": 5,  "text": "Hello" },
+    { "language": "ja",    "start": 6,  "end": 21, "text": "こんにちは" },
+    { "language": "en-US", "start": 22, "end": 27, "text": "world" }
+  ],
+  "normalizedText": "Hello こんにちは world"
 }
 ```
 
-Segment byte offsets index into the **normalized** input (NFC, whitespace
-collapsed). They are absent when the input is single-language or when the
-status is `unknown` / `unsupported`.
+`normalizedText` is the form of the input that the pipeline actually
+analyzed: NFC-composed, whitespace-collapsed, control-stripped, trimmed.
+Segment `start` / `end` byte offsets index into `normalizedText`, and each
+segment's `text` is the slice between those offsets.
+
+`segments` is always present; for a fully single-language input it contains
+one span covering the whole text. For `unknown` / `unsupported` status it is
+an empty array.
 
 ## Output schema
 
@@ -116,9 +122,10 @@ status is `unknown` / `unsupported`.
   "primaryLanguage": "<BCP 47 tag>",          // omitted when status is "unknown" / "unsupported"
   "status": "resolved | ambiguous | mixed | unknown | unsupported",
   "reason": "..." | ["...", "..."],            // single line or array of explanation lines
-  "segments": [                                 // omitted when empty
-    { "language": "<BCP 47 tag>", "start": 0, "end": 0 }
-  ]
+  "segments": [                                 // always present; `[]` only when status is unknown/unsupported
+    { "language": "<BCP 47 tag>", "start": 0, "end": 0, "text": "..." }
+  ],
+  "normalizedText": "..."                        // the analyzed form (NFC, whitespace-collapsed)
 }
 ```
 

@@ -4,7 +4,7 @@ use crate::layers::{
     context_window, dictionary, function_words, morphology, ngram, normalize, orthography, script,
 };
 use crate::segments::{self, HanStrategy};
-use crate::types::{IdentifyResult, Reason, Segment, Status};
+use crate::types::{IdentifyResult, Reason, Status};
 
 pub fn run(input: &str) -> IdentifyResult {
     let normalized = normalize::normalize(input);
@@ -15,6 +15,7 @@ pub fn run(input: &str) -> IdentifyResult {
             status: Status::Unknown,
             reason: Reason::Single("Empty input after normalization".into()),
             segments: vec![],
+            normalized_text: normalized.text,
         };
     }
 
@@ -122,12 +123,12 @@ pub fn run(input: &str) -> IdentifyResult {
             status: Status::Unsupported,
             reason: Reason::Single("Input uses scripts that are not in the supported set".into()),
             segments: vec![],
+            normalized_text: normalized.text,
         };
     }
 
     let han_strategy = pick_han_strategy(&counts, &ortho);
-    let raw_segments =
-        segments::extract(&normalized, &ortho, han_strategy, &morph.latin_attribution);
+    let segments = segments::extract(&normalized, &ortho, han_strategy, &morph.latin_attribution);
 
     let hints = CalibrationHints {
         context_multi_language: context.multi_language,
@@ -135,14 +136,13 @@ pub fn run(input: &str) -> IdentifyResult {
     let cal = calibrate(ranked, normalized.visible_chars, hints);
     notes.push(cal.note);
 
-    let presented_segments = present_segments(raw_segments, cal.primary_language.as_deref());
-
     IdentifyResult {
         candidates: cal.candidates,
         primary_language: cal.primary_language,
         status: cal.status,
         reason: Reason::from_notes(notes),
-        segments: presented_segments,
+        segments,
+        normalized_text: normalized.text,
     }
 }
 
@@ -158,16 +158,3 @@ fn pick_han_strategy(counts: &script::ScriptCounts, ortho: &orthography::OrthoSi
     }
 }
 
-/// Suppress the segment list when every span matches the primary language —
-/// no embedded content worth surfacing. Otherwise return as-is.
-fn present_segments(segs: Vec<Segment>, primary: Option<&str>) -> Vec<Segment> {
-    if segs.is_empty() {
-        return segs;
-    }
-    if let Some(p) = primary {
-        if segs.iter().all(|s| s.language == p) {
-            return Vec::new();
-        }
-    }
-    segs
-}

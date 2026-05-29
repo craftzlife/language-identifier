@@ -132,6 +132,7 @@ fn push_span(
         language: lang.to_string(),
         start,
         end,
+        text: input.text[start..end].to_string(),
     });
 }
 
@@ -144,6 +145,7 @@ fn merge_adjacent(spans: &mut Vec<Segment>, text: &str) {
         if same_lang && only_whitespace {
             let next_end = spans[i + 1].end;
             spans[i].end = next_end;
+            spans[i].text = text[spans[i].start..next_end].to_string();
             spans.remove(i + 1);
         } else {
             i += 1;
