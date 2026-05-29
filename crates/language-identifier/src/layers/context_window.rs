@@ -65,11 +65,15 @@ pub fn score(input: &Normalized) -> ContextWindowSignal {
         }
     }
 
-    let mut counts: Vec<(String, usize)> = sig
-        .per_language
-        .iter()
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
+    // Collapse same-macro variants (e.g. `zh` / `zh-Hans` / `zh-Hant`) into a
+    // single bucket before deciding multi-language. A paragraph that mixes
+    // Hans + Hant — or that contains a marker-less Han sentence that falls
+    // back to the umbrella `zh` tag — is the same language, not two.
+    let mut macro_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for (lang, n) in &sig.per_language {
+        *macro_counts.entry(macro_of(lang)).or_insert(0) += n;
+    }
+    let mut counts: Vec<(&str, usize)> = macro_counts.into_iter().collect();
     counts.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     if counts.len() >= 2 {
@@ -87,6 +91,12 @@ pub fn score(input: &Normalized) -> ContextWindowSignal {
     }
 
     sig
+}
+
+/// Strip any BCP 47 subtag suffix so language-variant siblings collapse to
+/// their shared macro for the multi-language comparison.
+fn macro_of(lang: &str) -> &str {
+    lang.split('-').next().unwrap_or(lang)
 }
 
 /// Count runs of >=5 consecutive Han chars without intervening kana / hangul /
