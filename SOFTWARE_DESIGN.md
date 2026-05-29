@@ -131,6 +131,7 @@ The library is a staged pipeline. Input flows from the top (text input) through 
 - **Layer 8 (User preference)** is **not implemented in this library and is not planned.** A language detector should faithfully report what is in the text. User preferences — preferred / target language, app locale, lookup history — are application-level concerns and belong in the consumer: rerank, filter, or hide candidates returned by `identify` according to the host app's policy. This keeps the library deterministic and content-only, with no hidden side channel into the verdict.
 - **Layer 9 (Lightweight ML)** reranks the candidates produced by 0–8 using learned features.
 - **Layer 10 (LLM)** is the most expensive step and is reserved for cases where earlier layers stay ambiguous. The diagram explicitly references using a "Local LLM" to validate context in the mixed-language `JA_ZH` test case.
+- **v4 status**: Layers 9 and 10 ship as **scaffolding only**. The public traits `MlClassifier` and `LlmResolver` are stable; the pipeline hooks are wired and exercised by `tests/options.rs`. Callers opt in by passing implementations through `IdentifyOptions` to `identify_with` / `identify_lines_with`. The default impls — a `fastText lid.176.bin`-backed classifier behind the `ml-fasttext` feature, and a bundled local LLM — land in v4.1 and v4.2 respectively.
 
 ### 7.2 Final calibration & ambiguity handling
 
@@ -549,7 +550,7 @@ Behavior for edge cases not covered explicitly in the diagram:
 
 ## 11. Security & privacy *(inferred)*
 
-- **Input data exposure:** If Layer 10 calls a remote model, input text leaves the device. The library should expose a configuration to disable Layer 10, restrict it to a local model, or require user opt-in for remote calls.
+- **Input data exposure:** If Layer 10 calls a remote model, input text leaves the device. The library should expose a configuration to disable Layer 10, restrict it to a local model, or require user opt-in for remote calls. v4 satisfies this by gating Layer 10 behind an explicit `IdentifyOptions::llm_resolver` opt-in; the no-arg `identify` API never invokes Layer 10.
 - **User preference:** Layer 8 is intentionally out of scope (see §7.1) — the library never reads user preference, app locale, or history, so there is no preference data to protect or transmit.
 - **No persistence:** The library should not retain input text after a call returns.
 - **Logging:** Reasons returned in the output may quote portions of input. Consumers logging the output should be aware that input fragments may surface.

@@ -17,6 +17,9 @@ pub struct AggregateInput<'a> {
     pub dictionary: &'a DictionarySignal,
     pub morphology: &'a MorphologySignal,
     pub context: &'a ContextWindowSignal,
+    /// Layer 9 — per-language confidence from an `MlClassifier`. `None`
+    /// when the caller didn't provide a classifier (the v3 default).
+    pub ml_scores: Option<&'a [(String, f32)]>,
 }
 
 const FUNCTION_WORD_PER_HIT: f32 = 0.02;
@@ -29,6 +32,10 @@ const MORPH_PER_HIT: f32 = 0.02;
 const MORPH_CAP: f32 = 0.10;
 const CONTEXT_PER_SENTENCE: f32 = 0.05;
 const CONTEXT_CAP: f32 = 0.15;
+// Layer 9 carries the most weight among non-script layers but cannot
+// single-handedly override a strong script signal.
+const ML_PER_CONFIDENCE: f32 = 0.30;
+const ML_CAP: f32 = 0.30;
 
 pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
     let mut w: BTreeMap<String, f32> = BTreeMap::new();
@@ -67,6 +74,14 @@ pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
     for (lang, n) in &input.context.per_language {
         let bonus = (*n as f32 * CONTEXT_PER_SENTENCE).min(CONTEXT_CAP);
         *w.entry(lang.clone()).or_insert(0.0) += bonus;
+    }
+
+    // Layer 9 — ML classifier scores (if a classifier was provided).
+    if let Some(scores) = input.ml_scores {
+        for (lang, conf) in scores {
+            let bonus = (*conf * ML_PER_CONFIDENCE).min(ML_CAP);
+            *w.entry(lang.clone()).or_insert(0.0) += bonus;
+        }
     }
 
     // Renormalize so weights sum to 1.0.

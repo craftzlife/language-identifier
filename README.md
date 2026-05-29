@@ -21,8 +21,8 @@ pipeline spec.
 | 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
 | 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
-| 9. Lightweight ML classifier | ⏳ v4 |
-| 10. LLM resolver | ⏳ v4 |
+| 9. Lightweight ML classifier | 🔧 v4 scaffolded (trait + hook); default impl in v4.1 |
+| 10. LLM resolver | 🔧 v4 scaffolded (trait + hook); default impl in v4.2 |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
 Supported languages: `en-US`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi-VN`, `ko`.
@@ -57,6 +57,53 @@ The `IdentifyResult` implements `serde::Serialize`, so callers can produce the J
 ```rust
 let json = serde_json::to_string_pretty(&identify("Teacher")).unwrap();
 ```
+
+### Customizing detection (Layers 9 & 10)
+
+`identify` / `identify_lines` run Layers 0–7 only. To opt into Layer 9
+(a lightweight ML classifier) or Layer 10 (an LLM disambiguator), use
+`identify_with` / `identify_lines_with` and supply trait
+implementations through `IdentifyOptions`:
+
+```rust
+use language_identifier::{
+    identify_with, IdentifyOptions, MlClassifier, LlmResolver, Candidate,
+};
+
+struct MyClassifier;
+impl MlClassifier for MyClassifier {
+    fn classify(&self, text: &str) -> Vec<(String, f32)> {
+        // Return per-language confidence over BCP 47 tags.
+        vec![("en-US".into(), 0.92), ("vi-VN".into(), 0.04)]
+    }
+}
+
+struct MyLlm;
+impl LlmResolver for MyLlm {
+    fn resolve(&self, text: &str, candidates: &[Candidate]) -> Option<String> {
+        // Inspect the close-call candidate set and pick one — or
+        // return None to defer to the deterministic ranking.
+        Some(candidates[0].language.clone())
+    }
+}
+
+let ml = MyClassifier;
+let llm = MyLlm;
+let opts = IdentifyOptions {
+    ml_classifier: Some(&ml),
+    llm_resolver: Some(&llm),
+};
+let r = identify_with("先生", &opts);
+```
+
+Layer 9 (when provided) folds its scores into aggregation as a capped
+bonus. Layer 10 (when provided) fires **only when calibration returns
+`status: "ambiguous"`** and may refine `primaryLanguage` without
+changing the status — the LLM's opinion is recorded in `reasons`.
+
+v4 ships the trait scaffolding only. A default `MlClassifier` backed by
+`fastText lid.176.bin` will land in v4.1 behind the `ml-fasttext` cargo
+feature; a default `LlmResolver` lands in v4.2.
 
 ## CLI usage
 

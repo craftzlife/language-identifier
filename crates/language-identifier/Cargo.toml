@@ -6,6 +6,14 @@ license.workspace = true
 rust-version.workspace = true
 description = "Layered language identification for short and multi-line text inputs."
 
+[features]
+default = []
+# Reserved for v4.1: pulls in `fasttext-rs` and ships a default
+# `MlClassifier` impl backed by `lid.176.bin`. The feature is declared
+# now so the public surface is stable across the v4 → v4.1 boundary.
+# v4 itself wires no extra dependency.
+ml-fasttext = []
+
 [dependencies]
 serde = { workspace = true }
 unicode-normalization = { workspace = true }

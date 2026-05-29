@@ -3,10 +3,15 @@ use crate::calibration::{calibrate, CalibrationHints};
 use crate::layers::{
     context_window, dictionary, function_words, morphology, ngram, normalize, orthography, script,
 };
+use crate::options::IdentifyOptions;
 use crate::segments::{self, HanStrategy};
 use crate::types::{IdentifyResult, Status};
 
 pub fn run(input: &str) -> IdentifyResult {
+    run_with(input, &IdentifyOptions::default())
+}
+
+pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     let normalized = normalize::normalize(input);
     if normalized.visible_chars == 0 {
         return IdentifyResult {
@@ -26,6 +31,9 @@ pub fn run(input: &str) -> IdentifyResult {
     let dict = dictionary::score(&normalized);
     let morph = morphology::score(&normalized);
     let context = context_window::score(&normalized);
+    let ml_scores: Option<Vec<(String, f32)>> = opts
+        .ml_classifier
+        .map(|c| c.classify(&normalized.text));
 
     let mut notes: Vec<String> = Vec::new();
     notes.push(format!(
@@ -104,6 +112,14 @@ pub fn run(input: &str) -> IdentifyResult {
             }
         ));
     }
+    if let Some(scores) = ml_scores.as_ref() {
+        let mut parts: Vec<String> = scores
+            .iter()
+            .map(|(l, c)| format!("{l}:{c:.2}"))
+            .collect();
+        parts.sort();
+        notes.push(format!("Layer 9 (ML classifier) — {}", parts.join(", ")));
+    }
 
     let ranked = aggregate(AggregateInput {
         counts: &counts,
@@ -113,6 +129,7 @@ pub fn run(input: &str) -> IdentifyResult {
         dictionary: &dict,
         morphology: &morph,
         context: &context,
+        ml_scores: ml_scores.as_deref(),
     });
 
     let unsupported_only = counts.supported_total() == 0 && counts.other > 0;
@@ -133,8 +150,24 @@ pub fn run(input: &str) -> IdentifyResult {
     let hints = CalibrationHints {
         context_multi_language: context.multi_language,
     };
-    let cal = calibrate(ranked, normalized.visible_chars, hints);
+    let mut cal = calibrate(ranked, normalized.visible_chars, hints);
     notes.push(cal.note);
+
+    if cal.status == Status::Ambiguous {
+        if let Some(resolver) = opts.llm_resolver {
+            match resolver.resolve(&normalized.text, &cal.candidates) {
+                Some(primary) => {
+                    notes.push(format!(
+                        "Layer 10 (LLM) refined primary language to '{primary}'"
+                    ));
+                    cal.primary_language = Some(primary);
+                }
+                None => notes.push(
+                    "Layer 10 (LLM) returned no decision — keeping pre-LLM primary".into(),
+                ),
+            }
+        }
+    }
 
     IdentifyResult {
         candidates: cal.candidates,
