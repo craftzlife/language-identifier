@@ -1,5 +1,12 @@
 use crate::aggregate::{aggregate, AggregateInput};
 use crate::calibration::{calibrate, CalibrationHints};
+
+/// Confidence at or above which a Layer 9 unsupported-language signal
+/// short-circuits the pipeline to `Status::Unsupported`. Strong enough
+/// to avoid false positives on mixed inputs (where lid.176 typically
+/// splits 0.55 / 0.40 between two languages); paranoid models can pick
+/// a higher threshold by post-processing their `UnsupportedSignal`.
+const ML_UNSUPPORTED_THRESHOLD: f32 = 0.50;
 use crate::layers::{
     context_window, dictionary, function_words, morphology, ngram, normalize, orthography, script,
 };
@@ -34,6 +41,29 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     let ml_scores: Option<Vec<(String, f32)>> = opts
         .ml_classifier
         .map(|c| c.classify(&normalized.text));
+
+    // Layer 9 unsupported-language short-circuit. When the classifier
+    // is confident the input is in a language outside the supported
+    // set (e.g. French through an en/vi/ja/ko/zh-only library), bail
+    // to `Status::Unsupported` rather than let the deterministic Latin
+    // path force the verdict onto en-US.
+    if let Some(classifier) = opts.ml_classifier {
+        if let Some(sig) = classifier.unsupported_signal(&normalized.text) {
+            if sig.confidence >= ML_UNSUPPORTED_THRESHOLD {
+                return IdentifyResult {
+                    candidates: vec![],
+                    primary_language: None,
+                    status: Status::Unsupported,
+                    reasons: vec![format!(
+                        "Layer 9 (ML classifier) detected unsupported language '{}' (confidence {:.2}) — verdict downgraded to unsupported",
+                        sig.label, sig.confidence
+                    )],
+                    segments: vec![],
+                    normalized_text: normalized.text,
+                };
+            }
+        }
+    }
 
     let mut notes: Vec<String> = Vec::new();
     notes.push(format!(

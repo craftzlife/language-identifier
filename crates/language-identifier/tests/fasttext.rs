@@ -123,6 +123,41 @@ fn chinese_input_drops_zh_label_from_layer9_reason() {
 }
 
 #[test]
+fn french_input_downgrades_to_unsupported() {
+    let Some(c) = try_load() else { return };
+    let opts = IdentifyOptions {
+        ml_classifier: Some(&c),
+        llm_resolver: None,
+    };
+    let r = identify_with("Bonjour le monde", &opts);
+    assert_eq!(r.status, Status::Unsupported, "{r:?}");
+    assert!(r.primary_language.is_none());
+    assert!(r.candidates.is_empty());
+    assert!(
+        r.reasons
+            .iter()
+            .any(|s| s.contains("unsupported language 'fr'")),
+        "expected 'fr' downgrade reason, got: {:?}",
+        r.reasons
+    );
+}
+
+#[test]
+fn chinese_input_is_not_downgraded_despite_zh_drop_in_classify() {
+    // `zh` is dropped from classify() (variant disambiguation belongs
+    // to Layer 3) but is still in the supported set — the unsupported
+    // signal must therefore stay quiet on pure-Han inputs.
+    let Some(c) = try_load() else { return };
+    let opts = IdentifyOptions {
+        ml_classifier: Some(&c),
+        llm_resolver: None,
+    };
+    let r = identify_with("这是一个中文句子。", &opts);
+    assert_ne!(r.status, Status::Unsupported, "{r:?}");
+    assert!(r.primary_language.is_some());
+}
+
+#[test]
 fn classifier_reused_across_calls() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {

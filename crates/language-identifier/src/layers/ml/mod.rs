@@ -32,4 +32,36 @@ pub trait MlClassifier: Send + Sync {
     /// other layer sees. Empty input is filtered earlier in the
     /// pipeline and never reaches this method.
     fn classify(&self, normalized_text: &str) -> Vec<(String, f32)>;
+
+    /// Optional hook: signal that the classifier is confident the
+    /// input is in a language outside the library's supported set.
+    ///
+    /// Returning `Some(signal)` lets the pipeline downgrade the verdict
+    /// to [`crate::Status::Unsupported`] instead of forcing the input
+    /// into a supported tag. Useful when a French sentence reaches a
+    /// library configured only for `{en, vi, ja, ko, zh-*}` — without
+    /// this signal the deterministic layers would default the Latin
+    /// script to `en-US`.
+    ///
+    /// The default impl returns `None`. Existing custom classifiers
+    /// keep working unchanged; only implementors that know their
+    /// model's full label set need to override.
+    fn unsupported_signal(&self, _normalized_text: &str) -> Option<UnsupportedSignal> {
+        None
+    }
+}
+
+/// Diagnostic value returned by [`MlClassifier::unsupported_signal`]
+/// when a classifier is confident the input is in a language outside
+/// the library's supported BCP 47 set.
+#[derive(Debug, Clone)]
+pub struct UnsupportedSignal {
+    /// Label the classifier uses internally (e.g. `"fr"`, `"de"`).
+    /// Surfaced verbatim in the `reasons` array; the pipeline does not
+    /// interpret it as a BCP 47 tag.
+    pub label: String,
+    /// Confidence in `[0.0, 1.0]`. The pipeline downgrades to
+    /// `Unsupported` only when this is at or above the threshold
+    /// declared in `pipeline.rs`.
+    pub confidence: f32,
 }

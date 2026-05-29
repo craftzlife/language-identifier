@@ -543,6 +543,7 @@ Behavior for edge cases not covered explicitly in the diagram:
 | Empty string or empty array | `{ status: "unknown", candidates: [] }` |
 | Whitespace-only / punctuation-only input | `{ status: "unknown", candidates: [] }` |
 | Script not in supported set (e.g. Arabic, Thai when only en/vi/ja/ko/zh are configured) | `{ status: "unsupported", candidates: [] }` |
+| Latin-script input in an unsupported language (e.g. French, German, Spanish) | When a Layer 9 `MlClassifier` opts into [`unsupported_signal`](#71-layer-notes) and reports a confidence ≥ 0.50 on a non-supported tag, `{ status: "unsupported", candidates: [] }` with a reason naming the detected language. Without a classifier — or with a classifier that doesn't implement the signal — the Latin script defaults to `en-US` per Layer 3's vi-density rule, which is a known sharp edge (v3 behavior). |
 | Layer 10 (LLM) unavailable while needed | Fall back to the highest-confidence Layer 9 candidate; report `status: "ambiguous"` with a reason noting the fallback. |
 | Conflicting strong signals across layers | `status: "ambiguous"` per the diagram's "confidence gap is small" rule. |
 

@@ -13,7 +13,7 @@ mod pipeline;
 mod segments;
 mod types;
 
-pub use layers::ml::MlClassifier;
+pub use layers::ml::{MlClassifier, UnsupportedSignal};
 #[cfg(feature = "ml-fasttext")]
 pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
 pub use llm::LlmResolver;

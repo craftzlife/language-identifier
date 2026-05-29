@@ -27,7 +27,7 @@ use std::path::PathBuf;
 
 use ::fasttext::FastText;
 
-use super::MlClassifier;
+use super::{MlClassifier, UnsupportedSignal};
 
 /// fastText-backed [`MlClassifier`] for Layer 9. Construct via
 /// [`FastTextClassifier::builder`].
@@ -90,6 +90,24 @@ impl MlClassifier for FastTextClassifier {
             .filter_map(|p| map_label(&p.label).map(|tag| (tag.to_string(), p.prob)))
             .collect()
     }
+
+    fn unsupported_signal(&self, normalized_text: &str) -> Option<UnsupportedSignal> {
+        let cleaned = scrub_newlines(normalized_text);
+        let top = self.model.predict(&cleaned, 1, 0.0).into_iter().next()?;
+        let code = top.label.strip_prefix("__label__").unwrap_or(&top.label);
+        // `zh` IS in the supported set — we drop it from `classify` for
+        // a different reason (variant disambiguation belongs to Layer
+        // 3). Treating it as "unsupported" here would wrongly downgrade
+        // Han inputs.
+        if is_supported_lid176_code(code) {
+            None
+        } else {
+            Some(UnsupportedSignal {
+                label: code.to_string(),
+                confidence: top.prob,
+            })
+        }
+    }
 }
 
 /// Errors produced while constructing a [`FastTextClassifier`].
@@ -126,9 +144,16 @@ fn map_label(raw: &str) -> Option<&'static str> {
         "vi" => Some("vi-VN"),
         "ja" => Some("ja"),
         "ko" => Some("ko"),
-        // `zh` intentionally dropped; see module doc-comment.
+        // `zh` intentionally dropped from classify; see module
+        // doc-comment. It is still treated as "supported" by
+        // `is_supported_lid176_code` so the unsupported-signal path
+        // does not wrongly downgrade Han inputs.
         _ => None,
     }
+}
+
+fn is_supported_lid176_code(code: &str) -> bool {
+    matches!(code, "en" | "vi" | "ja" | "ko" | "zh")
 }
 
 #[cfg(test)]
@@ -159,6 +184,19 @@ mod tests {
     #[test]
     fn label_mapping_tolerates_missing_prefix() {
         assert_eq!(map_label("en"), Some("en-US"));
+    }
+
+    #[test]
+    fn is_supported_treats_zh_as_supported() {
+        assert!(is_supported_lid176_code("zh"));
+    }
+
+    #[test]
+    fn is_supported_rejects_unsupported_codes() {
+        assert!(!is_supported_lid176_code("fr"));
+        assert!(!is_supported_lid176_code("de"));
+        assert!(!is_supported_lid176_code("es"));
+        assert!(!is_supported_lid176_code(""));
     }
 
     #[test]

@@ -161,6 +161,17 @@ set as follows:
 deterministic job of Layer 3 (orthography markers). Layer 9 earns its
 keep on cross-script ties, not on Han-variant decisions.
 
+**Unsupported-language downgrade.** When `FastTextClassifier` is
+confident the input is in a language outside the supported set (e.g.
+French through this `{en, vi, ja, ko, zh-*}`-only library), the
+pipeline returns `status: "unsupported"` instead of forcing the
+verdict onto `en-US` via the Latin-script default. The threshold is
+0.50 confidence; the `zh` umbrella label is treated as supported here
+so pure-Han inputs are never downgraded. Custom `MlClassifier` impls
+can opt into this behavior by overriding the trait's
+[`unsupported_signal`](https://docs.rs/language-identifier/latest/language_identifier/trait.MlClassifier.html#method.unsupported_signal)
+method (default returns `None`).
+
 The `lid.176.bin` weights are licensed CC-BY-SA 3.0 by the upstream
 authors; the library code stays MIT/Apache-2.0. See [`NOTICE`](./NOTICE).
 
