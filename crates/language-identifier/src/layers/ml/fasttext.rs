@@ -5,29 +5,35 @@
 //!
 //! ## What this does and does not contribute
 //!
-//! The classifier maps fastText's coarse language labels into the
+//! The classifier maps fastText's coarse ISO 639 labels into the
 //! library's BCP 47 set:
 //!
-//! | fastText label    | mapped tag |
-//! | ----------------- | ---------- |
-//! | `__label__en`     | `en-US`    |
-//! | `__label__vi`     | `vi-VN`    |
-//! | `__label__ja`     | `ja`       |
-//! | `__label__ko`     | `ko`       |
-//! | `__label__zh`     | *dropped*  |
-//! | all 171 others    | *dropped*  |
+//! | fastText label    | mapped tag                             |
+//! | ----------------- | -------------------------------------- |
+//! | `__label__en`     | `en-US`                                |
+//! | `__label__vi`     | `vi-VN`                                |
+//! | `__label__ja`     | `ja`                                   |
+//! | `__label__ko`     | `ko`                                   |
+//! | `__label__zh`     | `zh-Hant` if input contains a known    |
+//! |                   | Traditional-only character; otherwise  |
+//! |                   | `zh-Hans` (the modern default).        |
+//! | all 171 others    | *dropped*                              |
 //!
-//! `__label__zh` is intentionally dropped — lid.176 does not split
-//! `zh-Hans` vs `zh-Hant`, and Hans/Hant disambiguation is the
-//! deterministic job of Layer 3 (orthography markers). The ML model
-//! earns its keep on cross-script ties (en vs vi, ja vs zh in the
-//! aggregate), not on variant decisions inside Han.
+//! lid.176 emits a single `__label__zh` label without splitting Hans
+//! vs Hant. Rather than throw the signal away, we promote it to a
+//! concrete BCP 47 tag using a tiny ISO 639 → BCP 47 disambiguation
+//! check: scan the input for the Layer 3 `is_hant_only` character set
+//! and pick `zh-Hant` when any matches, otherwise default to
+//! `zh-Hans`. This is intentionally a coarse fallback — Layer 3's
+//! marker-based path is still authoritative for inputs with explicit
+//! Hans-only signals.
 
 use std::path::PathBuf;
 
 use ::fasttext::FastText;
 
 use super::{MlClassifier, UnsupportedSignal};
+use crate::layers::orthography;
 
 /// fastText-backed [`MlClassifier`] for Layer 9. Construct via
 /// [`FastTextClassifier::builder`].
@@ -84,10 +90,11 @@ impl FastTextClassifierBuilder {
 impl MlClassifier for FastTextClassifier {
     fn classify(&self, normalized_text: &str) -> Vec<(String, f32)> {
         let cleaned = scrub_newlines(normalized_text);
+        let has_hant = contains_hant_char(normalized_text);
         self.model
             .predict(&cleaned, self.top_k, 0.0)
             .into_iter()
-            .filter_map(|p| map_label(&p.label).map(|tag| (tag.to_string(), p.prob)))
+            .filter_map(|p| map_label(&p.label, has_hant).map(|tag| (tag.to_string(), p.prob)))
             .collect()
     }
 
@@ -137,19 +144,22 @@ fn scrub_newlines(s: &str) -> String {
         .collect()
 }
 
-fn map_label(raw: &str) -> Option<&'static str> {
+fn map_label(raw: &str, has_hant: bool) -> Option<&'static str> {
     let code = raw.strip_prefix("__label__").unwrap_or(raw);
     match code {
         "en" => Some("en-US"),
         "vi" => Some("vi-VN"),
         "ja" => Some("ja"),
         "ko" => Some("ko"),
-        // `zh` intentionally dropped from classify; see module
-        // doc-comment. It is still treated as "supported" by
-        // `is_supported_lid176_code` so the unsupported-signal path
-        // does not wrongly downgrade Han inputs.
+        // ISO 639 → BCP 47 disambiguation for the umbrella `zh` label.
+        // See module doc-comment.
+        "zh" => Some(if has_hant { "zh-Hant" } else { "zh-Hans" }),
         _ => None,
     }
+}
+
+fn contains_hant_char(text: &str) -> bool {
+    text.chars().any(orthography::is_hant_only_char)
 }
 
 fn is_supported_lid176_code(code: &str) -> bool {
@@ -162,28 +172,46 @@ mod tests {
 
     #[test]
     fn label_mapping_supported() {
-        assert_eq!(map_label("__label__en"), Some("en-US"));
-        assert_eq!(map_label("__label__vi"), Some("vi-VN"));
-        assert_eq!(map_label("__label__ja"), Some("ja"));
-        assert_eq!(map_label("__label__ko"), Some("ko"));
+        assert_eq!(map_label("__label__en", false), Some("en-US"));
+        assert_eq!(map_label("__label__vi", false), Some("vi-VN"));
+        assert_eq!(map_label("__label__ja", false), Some("ja"));
+        assert_eq!(map_label("__label__ko", false), Some("ko"));
     }
 
     #[test]
-    fn label_mapping_drops_zh() {
-        assert_eq!(map_label("__label__zh"), None);
+    fn label_mapping_routes_zh_by_hant_signal() {
+        // ISO 639 `zh` with no Hant character defaults to Hans (the
+        // modern default per the design rule).
+        assert_eq!(map_label("__label__zh", false), Some("zh-Hans"));
+        // When the input contains a Hant-only character, prefer Hant.
+        assert_eq!(map_label("__label__zh", true), Some("zh-Hant"));
     }
 
     #[test]
     fn label_mapping_drops_unrelated_languages() {
-        assert_eq!(map_label("__label__fr"), None);
-        assert_eq!(map_label("__label__de"), None);
-        assert_eq!(map_label("__label__zh-cn"), None);
-        assert_eq!(map_label("__label__"), None);
+        assert_eq!(map_label("__label__fr", false), None);
+        assert_eq!(map_label("__label__de", false), None);
+        assert_eq!(map_label("__label__zh-cn", false), None);
+        assert_eq!(map_label("__label__", false), None);
     }
 
     #[test]
     fn label_mapping_tolerates_missing_prefix() {
-        assert_eq!(map_label("en"), Some("en-US"));
+        assert_eq!(map_label("en", false), Some("en-US"));
+    }
+
+    #[test]
+    fn contains_hant_char_detects_hant_only() {
+        // `學` is in orthography's `is_hant_only` table.
+        assert!(contains_hant_char("學生"));
+    }
+
+    #[test]
+    fn contains_hant_char_misses_shared_or_hans_only() {
+        // `学生` uses the shinjitai/Hans form `学` — not Hant-only.
+        assert!(!contains_hant_char("学生"));
+        // Pure ASCII: no Han chars at all.
+        assert!(!contains_hant_char("Hello world"));
     }
 
     #[test]

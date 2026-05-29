@@ -28,6 +28,10 @@ pub fn is_vi_marker_char(c: char) -> bool {
     is_vi_marker(c)
 }
 
+pub fn is_hant_only_char(c: char) -> bool {
+    is_hant_only(c)
+}
+
 fn is_vi_marker(c: char) -> bool {
     // Strong Vietnamese markers — chars that are essentially exclusive to Vietnamese
     // among the languages we support.
@@ -64,6 +68,37 @@ fn is_hant_only(c: char) -> bool {
         '學' | '國' | '來' | '們' | '經' | '這' | '實' | '會' | '說' | '應'
             | '讓' | '與' | '沒' | '聽' | '寫' | '認' | '識' | '觀' | '議' | '態'
             | '資' | '產' | '風' | '調' | '請' | '記'
+            // v4.1 extension. Each entry has a distinct Hans form
+            // *and* a Japanese shinjitai (or no modern Japanese use),
+            // so seeing one is a strong Hant signal.
+            //
+            //   Hant | Hans | ja (shinjitai or alt)
+            //   ---- | ---- | ----------------------
+            | '權' // 权    権
+            | '體' // 体    体  (ja shares Hans form)
+            | '龜' // 龟    亀
+            | '歲' // 岁    歳
+            | '數' // 数    数  (ja shares Hans form)
+            | '關' // 关    関
+            | '舊' // 旧    旧
+            | '處' // 处    処
+            | '辭' // 辞    辞
+            | '戰' // 战    戦
+            | '對' // 对    対
+            | '氣' // 气    気
+            | '灣' // 湾    湾
+            | '黨' // 党    党
+            | '齊' // 齐    斉
+            | '豐' // 丰    豊
+            | '滿' // 满    満
+            | '辦' // 办    弁
+            | '齒' // 齿    歯
+            | '從' // 从    従
+            | '總' // 总    総
+            | '歷' // 历    歴
+            | '當' // 当    当
+            | '兒' // 儿    児
+            | '兩' // 两    両
     )
 }
 
@@ -100,6 +135,21 @@ mod tests {
         let s = detect(&n);
         assert!(s.hant_markers >= 3);
         assert_eq!(s.hans_markers, 0);
+    }
+
+    #[test]
+    fn detects_extended_hant_markers() {
+        // Sanity check the v4.1 extension: each of these is Hant-only
+        // and must register without bleeding into hans_markers.
+        for word in ["權限", "體會", "關係", "戰爭", "對話", "氣候", "臺灣"] {
+            let n = normalize(word);
+            let s = detect(&n);
+            assert!(
+                s.hant_markers >= 1,
+                "expected at least one Hant marker in {word:?}: {s:?}"
+            );
+            assert_eq!(s.hans_markers, 0, "{word:?} must not register as Hans: {s:?}");
+        }
     }
 
     #[test]

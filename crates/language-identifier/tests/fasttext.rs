@@ -94,31 +94,51 @@ fn korean_paragraph_keeps_korean_primary() {
 }
 
 #[test]
-fn chinese_input_drops_zh_label_from_layer9_reason() {
+fn simplified_chinese_routes_zh_to_zh_hans() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
         llm_resolver: None,
     };
     let r = identify_with("这是一个中文句子。", &opts);
-    // Hans/Hant disambiguation is Layer 3's job; the deterministic
-    // path still produces a primary language.
-    let primary = r.primary_language.as_deref().unwrap_or("");
-    assert!(
-        matches!(primary, "zh-Hans" | "zh-Hant" | "zh"),
-        "expected a Han-variant primary, got: {primary}"
-    );
-    // L9 must not surface `zh:...` because we drop the `zh` label
-    // before aggregation. The Layer 9 reason line should mention only
-    // the supported BCP 47 tags (or be absent if the model returned
-    // nothing in our supported set).
-    for r in &r.reasons {
-        if let Some(rest) = r.strip_prefix("Layer 9 (ML classifier) — ") {
-            assert!(
-                !rest.contains("zh:"),
-                "Layer 9 reason should not contain a bare `zh:` entry: {rest}"
-            );
-        }
+    assert_eq!(r.primary_language.as_deref(), Some("zh-Hans"), "{r:?}");
+    // With the ISO 639 → BCP 47 disambiguation, lid.176's `zh` label
+    // now contributes as `zh-Hans` (no Hant-only char in input).
+    let layer9 = r
+        .reasons
+        .iter()
+        .find_map(|s| s.strip_prefix("Layer 9 (ML classifier) — "));
+    if let Some(line) = layer9 {
+        assert!(
+            line.contains("zh-Hans:"),
+            "expected Layer 9 to surface zh-Hans: {line}"
+        );
+        assert!(
+            !line.contains("zh:"),
+            "umbrella `zh:` must not appear in Layer 9 reason: {line}"
+        );
+    }
+}
+
+#[test]
+fn traditional_chinese_routes_zh_to_zh_hant() {
+    let Some(c) = try_load() else { return };
+    let opts = IdentifyOptions {
+        ml_classifier: Some(&c),
+        llm_resolver: None,
+    };
+    // `學` is a Hant-only marker per Layer 3.
+    let r = identify_with("這是繁體中文的句子。", &opts);
+    assert_eq!(r.primary_language.as_deref(), Some("zh-Hant"), "{r:?}");
+    let layer9 = r
+        .reasons
+        .iter()
+        .find_map(|s| s.strip_prefix("Layer 9 (ML classifier) — "));
+    if let Some(line) = layer9 {
+        assert!(
+            line.contains("zh-Hant:"),
+            "expected Layer 9 to surface zh-Hant: {line}"
+        );
     }
 }
 
