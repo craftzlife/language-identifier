@@ -22,7 +22,7 @@ The library is designed to be robust on real-world text such as dictionary looku
 - Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`, `en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …).
 - Return a ranked candidate list with per-candidate `confidence`, a `primaryLanguage`, and a `status` of `resolved | ambiguous | mixed | unknown | unsupported`.
 - Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, context, and — when needed — an LLM.
-- Surface a `reason` that explains the decision so the result is auditable.
+- Surface a `reasons` array that explains the decision so the result is auditable.
 
 ## 3. Non-goals *(inferred)*
 
@@ -56,7 +56,7 @@ The library accepts either:
   ],
   "primaryLanguage": "ja",
   "status": "resolved|ambiguous|mixed|unknown|unsupported",
-  "reason": "..."
+  "reasons": ["...", "..."]
 }
 ```
 
@@ -67,7 +67,7 @@ The library accepts either:
 | `candidates` | array of `{ language: string, confidence: number }` | Ranked candidates with calibrated confidence in `[0, 1]`. |
 | `primaryLanguage` | BCP 47 string | The selected primary language. May still be present when `status = "ambiguous"` (chosen via tie-breakers, e.g. an LLM check on context). |
 | `status` | enum | See below. |
-| `reason` | string or array of strings | Human-readable justification (single string for simple cases; an array of explanation lines for mixed-language cases). |
+| `reasons` | array of strings | Human-readable justification — one explanation line per element. Always an array, even for trivial cases (a one-element array). |
 
 ### `status` values
 
@@ -162,7 +162,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh", "confidence": 0.50 }
   ],
   "status": "ambiguous",
-  "reason": "This word is used in all above languages"
+  "reasons": ["This word is used in all above languages"]
 }
 ```
 
@@ -178,7 +178,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "en-US", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": ""
+  "reasons": []
 }
 ```
 
@@ -196,7 +196,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "ja", "confidence": 1 }
   ],
   "status": "resolved",
-  "reason": "Japanese kana is detected among Han's characters",
+  "reasons": ["Japanese kana is detected among Han's characters"],
   "primaryLanguage": "ja"
 }
 ```
@@ -213,7 +213,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh-Hans", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "Chinese simplified",
+  "reasons": ["Chinese simplified"],
   "primaryLanguage": "zh-Hans"
 }
 ```
@@ -230,7 +230,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "en-US", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "All English US detected",
+  "reasons": ["All English US detected"],
   "primaryLanguage": "en-US"
 }
 ```
@@ -247,7 +247,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "vi", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "All Vietnamese detected",
+  "reasons": ["All Vietnamese detected"],
   "primaryLanguage": "vi"
 }
 ```
@@ -274,7 +274,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "ja", "confidence": 1 }
   ],
   "status": "resolved",
-  "reason": "Japanese kana is detected among Han's characters",
+  "reasons": ["Japanese kana is detected among Han's characters"],
   "primaryLanguage": "ja"
 }
 ```
@@ -299,7 +299,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh-Hans", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "Chinese simplified",
+  "reasons": ["Chinese simplified"],
   "primaryLanguage": "zh-Hans"
 }
 ```
@@ -324,7 +324,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "en-US", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "All English US detected",
+  "reasons": ["All English US detected"],
   "primaryLanguage": "en-US"
 }
 ```
@@ -349,7 +349,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "vi", "confidence": 1.0 }
   ],
   "status": "resolved",
-  "reason": "All Vietnamese detected",
+  "reasons": ["All Vietnamese detected"],
   "primaryLanguage": "vi"
 }
 ```
@@ -377,7 +377,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "ja", "confidence": 0.05 }
   ],
   "status": "resolved",
-  "reason": [
+  "reasons": [
     "There are US English and Japanese (Han traditional combined using with Kana characters), so language code [en-US, ja] are picked candidates",
     "English words is 74.68%, Japanese Kana is 5.61%",
     "The candidate confidence gap is significant so en-US is picked as the primary language, Japanese text is just embedded language segment"
@@ -407,7 +407,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh-Hans", "confidence": 0.05 }
   ],
   "status": "resolved",
-  "reason": [
+  "reasons": [
     "There are US English and Han simplified. The phrases embedded here (王先生今天在大学教中文 and 中文老师在大学上课) follow Chinese grammar rules directly without any Japanese particles. The characters '老师' (teacher), '学' (study/university), and '国' (implied in country terms) are explicitly written in their Simplified Chinese forms. No Japanese Kana Presence. therefor language code [en-US, zh-Hans] are picked candidates",
     "English words is 78.49%, Chinese Simplified is 4.37%",
     "The candidate confidence gap is significant so en-US is picked as the primary language, Chinese Simplified text is just embedded language segment"
@@ -438,7 +438,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh-Hans", "confidence": 0.09 }
   ],
   "status": "ambiguous",
-  "reason": [
+  "reasons": [
     "The high presence of Kana (39.37%) spread evenly across the entire text acts as the structural spine, overall sentence grammar and carrier language is Japanese (picked as the primaryLanguage). Words like 先生 or 大学 make up 30.43% of the text and are valid in Chinese and Japanese. Characters 老师 is strictly Simplified Chinese and never used in Japanese. Therefor language code [ja, zh-Hant, zh-Hans] are picked candidates",
     "Japanese Kana is 39.37%, Chinese Traditional is 30.43%, Chinese Simplified is 9.42%",
     "The candidate confidence gap is small, so detection status is 'ambiguous'. Local LLM is used to validated the context of input text, Japanese is primaryLanguage, Chinese text is just embedded language segment"
@@ -473,7 +473,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     { "language": "zh-Hans", "confidence": 0.00 }
   ],
   "status": "ambiguous",
-  "reason": [
+  "reasons": [
     "The input acts as a meta-language discussion where English functions as the carrier script across all three segments. Vietnamese is injected through short colloquial phrases sharing the Latin alphabet framework but identified by exclusive diacritic combinations (tiếng Việt, Tôi muốn). The CJK cluster contains overlapping Hanzi/Kanji (先生, 大学) which natively maps to both Japanese and Traditional Chinese, though specific Kana indicators (は, で, を) anchor the target examples to Japanese, while a single instance of 老师 targets Simplified Chinese. Therefore, [en-US, vi-VN, zh-Hant, ja] are selected as the primary candidates.",
     "English is 66.42%, Vietnamese is 6.42%, Chinese Traditional/Kanji is 5.87%, Japanese Kana is 2.94%, Chinese Simplified is 0.37%",
     "Multiple distinct language systems coexist within single-sentence boundaries, rendering a single-result classification invalid. Contextual mapping verifies that English handles the primary syntax framework, while Vietnamese, Japanese, and Chinese serve strictly as nested, embedded reference segments."

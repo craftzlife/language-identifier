@@ -394,7 +394,7 @@ fn json_output_uses_sdd_field_names() {
     let json = serde_json::to_string(&r).unwrap();
     assert!(json.contains("\"candidates\""));
     assert!(json.contains("\"status\""));
-    assert!(json.contains("\"reason\""));
+    assert!(json.contains("\"reasons\""));
     // primaryLanguage is camelCase per SDD
     assert!(json.contains("\"primaryLanguage\":\"en-US\""));
     // status is lowercase per SDD
@@ -411,22 +411,21 @@ fn all_status_variants_serialize_lowercase() {
 }
 
 #[test]
-fn reason_serializes_as_string_for_unknown_input() {
-    // Unknown/Unsupported paths use Reason::Single, which must serialize as a JSON string.
+fn reasons_is_array_for_unknown_input() {
     let r = identify("");
     let json = serde_json::to_string(&r).unwrap();
-    let idx = json.find("\"reason\":").unwrap();
-    let after = &json[idx + "\"reason\":".len()..];
-    assert!(after.starts_with('"'), "expected string reason: {after}");
+    let idx = json.find("\"reasons\":").unwrap();
+    let after = &json[idx + "\"reasons\":".len()..];
+    assert!(after.starts_with('['), "expected array reasons: {after}");
 }
 
 #[test]
-fn reason_serializes_as_array_when_multi() {
+fn reasons_is_array_for_multi() {
     let r = identify("先生は大学で日本語を教えています");
     let json = serde_json::to_string(&r).unwrap();
-    let idx = json.find("\"reason\":").unwrap();
-    let after = &json[idx + "\"reason\":".len()..];
-    assert!(after.starts_with('['), "expected array reason: {after}");
+    let idx = json.find("\"reasons\":").unwrap();
+    let after = &json[idx + "\"reasons\":".len()..];
+    assert!(after.starts_with('['), "expected array reasons: {after}");
 }
 
 #[test]

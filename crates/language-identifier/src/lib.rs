@@ -11,7 +11,7 @@ mod pipeline;
 mod segments;
 mod types;
 
-pub use types::{Candidate, IdentifyResult, Reason, Segment, Status};
+pub use types::{Candidate, IdentifyResult, Segment, Status};
 
 /// Identify the language of a single string.
 pub fn identify(input: &str) -> IdentifyResult {

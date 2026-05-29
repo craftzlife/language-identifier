@@ -16,24 +16,6 @@ pub struct Candidate {
     pub confidence: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Reason {
-    Single(String),
-    Lines(Vec<String>),
-}
-
-impl Reason {
-    pub fn from_notes(mut notes: Vec<String>) -> Self {
-        notes.retain(|n| !n.is_empty());
-        match notes.len() {
-            0 => Reason::Single(String::new()),
-            1 => Reason::Single(notes.pop().unwrap()),
-            _ => Reason::Lines(notes),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Segment {
     pub language: String,
@@ -53,7 +35,7 @@ pub struct IdentifyResult {
     #[serde(rename = "primaryLanguage", skip_serializing_if = "Option::is_none")]
     pub primary_language: Option<String>,
     pub status: Status,
-    pub reason: Reason,
+    pub reasons: Vec<String>,
     #[serde(default)]
     pub segments: Vec<Segment>,
     /// The NFC-composed, whitespace-collapsed, control-stripped form of the

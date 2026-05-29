@@ -87,7 +87,7 @@ $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは wor
   ],
   "primaryLanguage": "en-US",
   "status": "mixed",
-  "reason": [
+  "reasons": [
     "Script counts — latin:10, hiragana:5, katakana:0, han:0, hangul:0",
     "Japanese kana present — Han characters interpreted as kanji",
     "Function-word hits — ja:3",
@@ -121,7 +121,7 @@ an empty array.
   ],
   "primaryLanguage": "<BCP 47 tag>",          // omitted when status is "unknown" / "unsupported"
   "status": "resolved | ambiguous | mixed | unknown | unsupported",
-  "reason": "..." | ["...", "..."],            // single line or array of explanation lines
+  "reasons": ["...", "..."],                    // array of explanation lines (always an array)
   "segments": [                                 // always present; `[]` only when status is unknown/unsupported
     { "language": "<BCP 47 tag>", "start": 0, "end": 0, "text": "..." }
   ],

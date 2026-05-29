@@ -4,7 +4,7 @@ use crate::layers::{
     context_window, dictionary, function_words, morphology, ngram, normalize, orthography, script,
 };
 use crate::segments::{self, HanStrategy};
-use crate::types::{IdentifyResult, Reason, Status};
+use crate::types::{IdentifyResult, Status};
 
 pub fn run(input: &str) -> IdentifyResult {
     let normalized = normalize::normalize(input);
@@ -13,7 +13,7 @@ pub fn run(input: &str) -> IdentifyResult {
             candidates: vec![],
             primary_language: None,
             status: Status::Unknown,
-            reason: Reason::Single("Empty input after normalization".into()),
+            reasons: vec!["Empty input after normalization".into()],
             segments: vec![],
             normalized_text: normalized.text,
         };
@@ -121,7 +121,7 @@ pub fn run(input: &str) -> IdentifyResult {
             candidates: vec![],
             primary_language: None,
             status: Status::Unsupported,
-            reason: Reason::Single("Input uses scripts that are not in the supported set".into()),
+            reasons: vec!["Input uses scripts that are not in the supported set".into()],
             segments: vec![],
             normalized_text: normalized.text,
         };
@@ -140,7 +140,7 @@ pub fn run(input: &str) -> IdentifyResult {
         candidates: cal.candidates,
         primary_language: cal.primary_language,
         status: cal.status,
-        reason: Reason::from_notes(notes),
+        reasons: notes.into_iter().filter(|n| !n.is_empty()).collect(),
         segments,
         normalized_text: normalized.text,
     }
