@@ -1,8 +1,9 @@
 //! Layer 9 — Lightweight ML classifier.
 //!
-//! v4 ships the trait only. A default implementation backed by
-//! `fastText lid.176.bin` will land in v4.1 behind the `ml-fasttext`
-//! cargo feature. Callers can already plug in their own classifier via
+//! The trait is always available. The default implementation
+//! [`fasttext::FastTextClassifier`] (backed by Meta/FAIR's
+//! `lid.176.bin`) ships behind the `ml-fasttext` cargo feature.
+//! Callers can also plug in their own classifier via
 //! [`crate::IdentifyOptions::ml_classifier`].
 //!
 //! The classifier is consulted once per call, after Layers 0–7 have
@@ -11,6 +12,9 @@
 //! `aggregate.rs`), so a well-calibrated ML model can outweigh the
 //! lexical layers but cannot single-handedly override a strong script
 //! signal.
+
+#[cfg(feature = "ml-fasttext")]
+pub mod fasttext;
 
 /// Per-language language-identification confidence over the supported
 /// BCP 47 tag set.

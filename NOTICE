@@ -20,6 +20,18 @@ distributed under Creative Commons Attribution-ShareAlike 4.0
 <https://creativecommons.org/licenses/by-sa/4.0/> in keeping with the
 upstream data licenses.
 
+When the optional `ml-fasttext` cargo feature is enabled, callers point the
+library at Meta/FAIR's `lid.176.bin` model file at runtime. The library
+does not bundle that model, but consumers redistributing it should
+preserve the upstream attribution:
+
+  fastText / lid.176 <https://fasttext.cc/docs/en/language-identification.html>
+    Joulin, Grave, Bojanowski & Mikolov, "Bag of Tricks for Efficient Text
+    Classification" (2016) and "FastText.zip: Compressing text
+    classification models" (2016).
+    Model weights distributed under Creative Commons Attribution-ShareAlike
+    3.0 <https://creativecommons.org/licenses/by-sa/3.0/>.
+
 The rest of this repository (Rust source code, documentation, build
 configuration) is distributed under the MIT OR Apache-2.0 dual license as
 declared in the workspace `Cargo.toml`.

@@ -8,15 +8,16 @@ description = "Layered language identification for short and multi-line text inp
 
 [features]
 default = []
-# Reserved for v4.1: pulls in `fasttext-rs` and ships a default
-# `MlClassifier` impl backed by `lid.176.bin`. The feature is declared
-# now so the public surface is stable across the v4 → v4.1 boundary.
-# v4 itself wires no extra dependency.
-ml-fasttext = []
+# Ships the default `MlClassifier` impl backed by Meta/FAIR's
+# `lid.176.bin`. The `fasttext` crate is a pure-Rust port (no C++ FFI),
+# so enabling this feature adds two transitive deps (`rayon`,
+# `thiserror`) but no native build requirements.
+ml-fasttext = ["dep:fasttext"]
 
 [dependencies]
 serde = { workspace = true }
 unicode-normalization = { workspace = true }
+fasttext = { version = "0.8", optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

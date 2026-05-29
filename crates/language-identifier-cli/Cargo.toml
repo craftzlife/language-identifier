@@ -9,6 +9,10 @@ rust-version.workspace = true
 name = "language-identifier"
 path = "src/main.rs"
 
+[features]
+default = []
+ml-fasttext = ["language-identifier/ml-fasttext"]
+
 [dependencies]
 language-identifier = { path = "../language-identifier" }
 serde_json = { workspace = true }

@@ -14,6 +14,8 @@ mod segments;
 mod types;
 
 pub use layers::ml::MlClassifier;
+#[cfg(feature = "ml-fasttext")]
+pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
 pub use llm::LlmResolver;
 pub use options::IdentifyOptions;
 pub use types::{Candidate, IdentifyResult, Segment, Status};

@@ -21,7 +21,7 @@ pipeline spec.
 | 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
 | 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
-| 9. Lightweight ML classifier | 🔧 v4 scaffolded (trait + hook); default impl in v4.1 |
+| 9. Lightweight ML classifier | ✅ v4.1 (default impl `FastTextClassifier` behind `ml-fasttext` feature) |
 | 10. LLM resolver | 🔧 v4 scaffolded (trait + hook); default impl in v4.2 |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
@@ -101,9 +101,68 @@ bonus. Layer 10 (when provided) fires **only when calibration returns
 `status: "ambiguous"`** and may refine `primaryLanguage` without
 changing the status — the LLM's opinion is recorded in `reasons`.
 
-v4 ships the trait scaffolding only. A default `MlClassifier` backed by
-`fastText lid.176.bin` will land in v4.1 behind the `ml-fasttext` cargo
-feature; a default `LlmResolver` lands in v4.2.
+A default `LlmResolver` lands in v4.2. A default `MlClassifier` —
+[`FastTextClassifier`](#layer-9-with-the-bundled-fasttext-default-v41) —
+ships in v4.1 behind the `ml-fasttext` cargo feature; see below.
+
+### Layer 9 with the bundled fastText default (v4.1)
+
+Enable the `ml-fasttext` feature to compile the default `MlClassifier`
+backed by Meta/FAIR's `lid.176.bin`. The
+[`fasttext`](https://crates.io/crates/fasttext) crate v0.8 used
+underneath is a pure-Rust port — no `clang` / `cmake` / C++ toolchain
+needed.
+
+Download the model file (~126 MB) once:
+
+```bash
+curl -L -o lid.176.bin \
+  https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
+```
+
+Use it from Rust:
+
+```rust
+use language_identifier::{
+    identify_with, FastTextClassifier, IdentifyOptions,
+};
+
+let classifier = FastTextClassifier::builder()
+    .model_path("./lid.176.bin")
+    .build()?;
+let opts = IdentifyOptions {
+    ml_classifier: Some(&classifier),
+    llm_resolver: None,
+};
+let r = identify_with("Bonjour le monde", &opts);
+```
+
+Or use it from the CLI:
+
+```bash
+cargo run --features ml-fasttext -p language-identifier-cli -- \
+  --ml-fasttext ./lid.176.bin --pretty "Bonjour le monde"
+```
+
+`FastTextClassifier` maps lid.176's labels into the library's BCP 47
+set as follows:
+
+| fastText label  | mapped tag |
+| --------------- | ---------- |
+| `__label__en`   | `en-US`    |
+| `__label__vi`   | `vi-VN`    |
+| `__label__ja`   | `ja`       |
+| `__label__ko`   | `ko`       |
+| `__label__zh`   | *dropped*  |
+| any other       | *dropped*  |
+
+`__label__zh` is intentionally dropped: lid.176 does not split
+`zh-Hans` vs `zh-Hant`, and Hans/Hant disambiguation is the
+deterministic job of Layer 3 (orthography markers). Layer 9 earns its
+keep on cross-script ties, not on Han-variant decisions.
+
+The `lid.176.bin` weights are licensed CC-BY-SA 3.0 by the upstream
+authors; the library code stays MIT/Apache-2.0. See [`NOTICE`](./NOTICE).
 
 ## CLI usage
 
