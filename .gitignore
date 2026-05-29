@@ -3,3 +3,4 @@
 # drawio editor autosave/backups
 .$*.drawio.bkp
 *.drawio.bkp
+.DS_Store
