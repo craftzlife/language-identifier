@@ -30,6 +30,7 @@ The library is designed to be robust on real-world text such as dictionary looku
 - Not a script converter (e.g. Hans ↔ Hant, romanization).
 - Not a general-purpose NLP pipeline (no POS, parsing, NER beyond what language ID needs).
 - Not a per-token segmentation API in v1; the schema returns a single `primaryLanguage`. Per-segment / embedded-segment output is listed under Open Questions.
+- Not a preference-aware ranker. The library reports what is in the input text; user preferences (preferred / target language, app locale, lookup history) are an application concern and are applied on top of the returned `candidates` by the consumer — see §7.1 on Layer 8.
 
 ---
 
@@ -118,7 +119,7 @@ The library is a staged pipeline. Input flows from the top (text input) through 
 | 5 | Dictionary / lexicon matching | Check whether words or phrases exist in one or more language dictionaries and detect shared ambiguous terms. |
 | 6 | Morphology / tokenization hints | Analyze word forms and tokenization patterns to detect grammar-specific language signals. |
 | 7 | Context window scoring | Use surrounding sentences, paragraphs, or page context to resolve ambiguous words or phrases. |
-| 8 | User preference / app state | Use the user's selected language, learning preference, lookup history, or app state as a secondary signal. |
+| 8 | User preference / app state | **Out of library scope** (see §7.1). The diagram lists this layer, but a content-only detector should not bias its verdict by user state. Consumers apply preferences on top of the returned `candidates`. |
 | 9 | Lightweight ML classifier / embedding classifier | Use a lightweight model to combine features and rerank candidate languages. |
 | 10 | LLM / Foundation Model resolver | Use a stronger model for deeper contextual reasoning when earlier layers remain uncertain. |
 | — | Final calibration & ambiguity handling | Calibrate the final confidence score and decide whether to return a language or mark the result as ambiguous. |
@@ -127,7 +128,7 @@ The library is a staged pipeline. Input flows from the top (text input) through 
 
 - **Layers 0–6** are deterministic, fast, and dictionary/rule-based. They produce the initial candidate distribution.
 - **Layer 7 (Context window)** uses surrounding text to disambiguate single words shared across languages — critical for dictionary-app flows where a user selects one CJK character.
-- **Layer 8 (User preference)** is a soft prior, not an override. It nudges the candidate distribution toward the user's known target language.
+- **Layer 8 (User preference)** is **not implemented in this library and is not planned.** A language detector should faithfully report what is in the text. User preferences — preferred / target language, app locale, lookup history — are application-level concerns and belong in the consumer: rerank, filter, or hide candidates returned by `identify` according to the host app's policy. This keeps the library deterministic and content-only, with no hidden side channel into the verdict.
 - **Layer 9 (Lightweight ML)** reranks the candidates produced by 0–8 using learned features.
 - **Layer 10 (LLM)** is the most expensive step and is reserved for cases where earlier layers stay ambiguous. The diagram explicitly references using a "Local LLM" to validate context in the mixed-language `JA_ZH` test case.
 
@@ -549,7 +550,7 @@ Behavior for edge cases not covered explicitly in the diagram:
 ## 11. Security & privacy *(inferred)*
 
 - **Input data exposure:** If Layer 10 calls a remote model, input text leaves the device. The library should expose a configuration to disable Layer 10, restrict it to a local model, or require user opt-in for remote calls.
-- **User preference (Layer 8):** Treated as private local data; never sent to external services as part of language identification.
+- **User preference:** Layer 8 is intentionally out of scope (see §7.1) — the library never reads user preference, app locale, or history, so there is no preference data to protect or transmit.
 - **No persistence:** The library should not retain input text after a call returns.
 - **Logging:** Reasons returned in the output may quote portions of input. Consumers logging the output should be aware that input fragments may surface.
 
@@ -568,10 +569,13 @@ Behavior for edge cases not covered explicitly in the diagram:
 5. ~~**Inconsistent `primaryLanguage` in Case M3.**~~ v3 implements the diagram's stated behavior: M3 returns `status: "ambiguous"` with `primaryLanguage: "ja"`. The diagram's `"en-US"` value in the JSON output is treated as a typo. Layer 7 (context window) detects the embedded Chinese phrases via an intra-sentence Han-run signal and downgrades Resolved → Ambiguous while keeping `ja` as the primary.
 8. ~~**Dictionary-aware Latin sub-segmentation.**~~ Layer 6 (morphology / tokenization hints) now attributes each Latin token to `en-US` or `vi-VN` using lexicon membership + VI syllable shape. Aggregate uses these per-token attributions to split the Latin script proportionally, producing genuine EN+VI `Mixed` status when both languages have meaningful content.
 
+### Resolved by design (not implemented)
+
+3. ~~**API surface for Layer 8.**~~ Layer 8 is **out of library scope** (see §7.1). A language detector should report what is in the input; biasing the verdict with user state (preferred language, app locale, lookup history) makes the library less truthful as a primitive and adds a hidden side channel into the result. Consumers apply preferences on top of the returned `candidates` — rerank, filter, or surface them in the UI according to host-app policy. There is no Layer 8 API and none is planned.
+
 ### Still open
 
 2. **Layer 10 deployment.** Is the LLM bundled (local, e.g. small on-device model) or remote? Case M3 says "Local LLM is used", which suggests a local model is part of the design.
-3. **API surface for Layer 8.** How does the host application supply user preference / app state to the library? Constructor option? Per-call argument?
 7. **Expected outputs for `EN_VI`, `VI_JA`, `VI_ZH`.** Listed in §8.5 as pending — fill in once decided.
 9. **Segment offsets are into normalized text, not the caller's original input.** Callers needing to highlight spans in the original string need a v4 mapping back through NFC + whitespace collapse.
 10. **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`, `etc.`) over-splits sentences. Cosmetic only — per-token attributions still aggregate correctly to the same language — but the `reason` notes can be misleading.

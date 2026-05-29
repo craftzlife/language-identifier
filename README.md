@@ -20,7 +20,7 @@ pipeline spec.
 | 5. Dictionary / lexicon matching (10 K words × 6 langs) | ✅ |
 | 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
-| 8. User preference / app state | ⏳ v4 |
+| 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | 9. Lightweight ML classifier | ⏳ v4 |
 | 10. LLM resolver | ⏳ v4 |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
