@@ -8,17 +8,18 @@ mod aggregate;
 mod bcp47;
 mod calibration;
 mod layers;
-mod llm;
 mod options;
 mod pipeline;
 mod segments;
 mod types;
 
 pub use bcp47::{from_iso639, is_supported_iso639};
+#[cfg(all(target_os = "macos", feature = "llm-apple-foundation"))]
+pub use layers::llm::apple_foundation::{AppleFoundationResolver, AppleFoundationUnavailable};
+pub use layers::llm::LlmResolver;
 #[cfg(feature = "ml-fasttext")]
 pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
 pub use layers::ml::{MlClassifier, UnsupportedSignal};
-pub use llm::LlmResolver;
 pub use options::IdentifyOptions;
 pub use types::{Candidate, IdentifyResult, Segment, Status};
 

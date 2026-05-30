@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Layered language identification for short and multi-line text inputs."
+build = "build.rs"
 
 [features]
 default = []
@@ -13,6 +14,13 @@ default = []
 # so enabling this feature adds two transitive deps (`rayon`,
 # `thiserror`) but no native build requirements.
 ml-fasttext = ["dep:fasttext"]
+# Ships the default `LlmResolver` impl backed by Apple's on-device
+# `FoundationModels` framework (macOS 26+ / iOS 26+, Apple Silicon).
+# Compiling this feature requires the Xcode toolchain (`swiftc`) and
+# the macOS 26 SDK; linking pulls in `FoundationModels.framework`.
+# On non-Apple platforms enabling this feature is a no-op (the impl
+# is `#[cfg(target_os = "macos")]`-gated).
+llm-apple-foundation = []
 
 [dependencies]
 serde = { workspace = true }

@@ -9,8 +9,8 @@
 //! Per SDD §11, this struct also satisfies the "configuration to
 //! disable Layer 10" requirement: opting out is the default.
 
+use crate::layers::llm::LlmResolver;
 use crate::layers::ml::MlClassifier;
-use crate::llm::LlmResolver;
 
 /// Optional per-call configuration.
 ///
