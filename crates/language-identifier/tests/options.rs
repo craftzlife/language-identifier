@@ -1,8 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use language_identifier::{
-    identify, identify_with, Candidate, IdentifyOptions, LlmResolver, MlClassifier, Status,
-};
+use language_identifier::{identify, identify_with, IdentifyOptions, MlClassifier};
 
 /// Trivial `MlClassifier` that ignores the input and returns a fixed
 /// score list. Useful for verifying the L9 hook routes through
@@ -11,30 +7,6 @@ struct FixedMl(Vec<(String, f32)>);
 impl MlClassifier for FixedMl {
     fn classify(&self, _: &str) -> Vec<(String, f32)> {
         self.0.clone()
-    }
-}
-
-/// `LlmResolver` stub that counts invocations and returns a
-/// configurable answer.
-struct StubLlm {
-    calls: AtomicUsize,
-    answer: Option<String>,
-}
-impl StubLlm {
-    fn new(answer: Option<&str>) -> Self {
-        Self {
-            calls: AtomicUsize::new(0),
-            answer: answer.map(str::to_string),
-        }
-    }
-    fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-}
-impl LlmResolver for StubLlm {
-    fn resolve(&self, _: &str, _: &[Candidate]) -> Option<String> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.answer.clone()
     }
 }
 
@@ -81,7 +53,6 @@ fn ml_classifier_influences_candidate_ordering() {
     let ml = FixedMl(vec![("zh-Hans".into(), 1.0)]);
     let opts = IdentifyOptions {
         ml_classifier: Some(&ml),
-        llm_resolver: None,
     };
     let with_ml = identify_with(input, &opts);
     assert_eq!(
@@ -97,86 +68,5 @@ fn ml_classifier_influences_candidate_ordering() {
             .any(|r| r.contains("Layer 9 (ML classifier)")),
         "expected Layer 9 reason, got: {:?}",
         with_ml.reasons
-    );
-}
-
-#[test]
-fn llm_resolver_only_fires_on_ambiguous() {
-    let resolver = StubLlm::new(None);
-    let opts = IdentifyOptions {
-        ml_classifier: None,
-        llm_resolver: Some(&resolver),
-    };
-
-    let resolved = identify_with("giáo viên đại học", &opts);
-    assert_eq!(resolved.status, Status::Resolved);
-    assert_eq!(resolver.calls(), 0, "resolver fired on Resolved input");
-
-    let ambiguous = identify_with("学", &opts);
-    assert_eq!(ambiguous.status, Status::Ambiguous);
-    assert_eq!(
-        resolver.calls(),
-        1,
-        "resolver should fire once on Ambiguous input"
-    );
-}
-
-#[test]
-fn llm_resolver_changes_primary_but_not_status() {
-    let resolver = StubLlm::new(Some("ja"));
-    let opts = IdentifyOptions {
-        ml_classifier: None,
-        llm_resolver: Some(&resolver),
-    };
-    let r = identify_with("学", &opts);
-    assert_eq!(r.status, Status::Ambiguous, "L10 must not change status");
-    assert_eq!(r.primary_language.as_deref(), Some("ja"));
-    assert!(
-        r.reasons
-            .iter()
-            .any(|s| s.contains("Layer 10 (LLM) refined primary")),
-        "expected L10 refinement note, got: {:?}",
-        r.reasons
-    );
-}
-
-#[test]
-fn llm_resolver_skipped_for_resolved_input() {
-    let resolver = StubLlm::new(Some("zz-Made-Up"));
-    let opts = IdentifyOptions {
-        ml_classifier: None,
-        llm_resolver: Some(&resolver),
-    };
-    let r = identify_with("giáo viên đại học", &opts);
-    assert_eq!(r.status, Status::Resolved);
-    assert_eq!(
-        r.primary_language.as_deref(),
-        Some("vi"),
-        "resolver must not touch a Resolved primary"
-    );
-    assert_eq!(resolver.calls(), 0);
-    assert!(
-        !r.reasons.iter().any(|s| s.contains("Layer 10")),
-        "no L10 note should appear for Resolved input"
-    );
-}
-
-#[test]
-fn llm_resolver_none_answer_keeps_primary_with_note() {
-    let resolver = StubLlm::new(None);
-    let opts = IdentifyOptions {
-        ml_classifier: None,
-        llm_resolver: Some(&resolver),
-    };
-    let baseline = identify("学");
-    let r = identify_with("学", &opts);
-    assert_eq!(r.status, Status::Ambiguous);
-    assert_eq!(r.primary_language, baseline.primary_language);
-    assert!(
-        r.reasons
-            .iter()
-            .any(|s| s.contains("Layer 10 (LLM) returned no decision")),
-        "expected 'no decision' note, got: {:?}",
-        r.reasons
     );
 }

@@ -1,8 +1,9 @@
 //! Language Identifier — layered identification of natural language from text input.
 //!
 //! See `SOFTWARE_DESIGN.md` at the repository root for the full design.
-//! v1 implements Layers 0–3 + final calibration; later layers (dictionary, context,
-//! ML, LLM) are stubs to be added without breaking the public API.
+//! Layers 0–9 are implemented (Layer 9 behind the `ml-fasttext` cargo
+//! feature); Layer 10 (LLM) is deliberately out of scope — see
+//! SOFTWARE_DESIGN.md §7.1.
 
 mod aggregate;
 mod bcp47;
@@ -14,9 +15,6 @@ mod segments;
 mod types;
 
 pub use bcp47::{from_iso639, is_supported_iso639};
-#[cfg(all(target_os = "macos", feature = "llm-apple-foundation"))]
-pub use layers::llm::apple_foundation::{AppleFoundationResolver, AppleFoundationUnavailable};
-pub use layers::llm::LlmResolver;
 #[cfg(feature = "ml-fasttext")]
 pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
 pub use layers::ml::{MlClassifier, UnsupportedSignal};
@@ -24,14 +22,14 @@ pub use options::IdentifyOptions;
 pub use types::{Candidate, IdentifyResult, Segment, Status};
 
 /// Identify the language of a single string using the default
-/// configuration (Layers 0–7 only — Layer 9/10 disabled).
+/// configuration (Layers 0–7 only — Layer 9 disabled).
 pub fn identify(input: &str) -> IdentifyResult {
     pipeline::run(input)
 }
 
 /// Identify the language of a single string with caller-supplied
-/// [`IdentifyOptions`]. Use this to opt into Layer 9 (ML classifier) or
-/// Layer 10 (LLM resolver) by providing trait implementations.
+/// [`IdentifyOptions`]. Use this to opt into Layer 9 (ML classifier)
+/// by providing a trait implementation.
 pub fn identify_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     pipeline::run_with(input, opts)
 }

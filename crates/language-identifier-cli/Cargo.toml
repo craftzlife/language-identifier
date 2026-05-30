@@ -5,8 +5,6 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
-build = "build.rs"
-
 [[bin]]
 name = "language-identifier"
 path = "src/main.rs"
@@ -14,7 +12,6 @@ path = "src/main.rs"
 [features]
 default = []
 ml-fasttext = ["language-identifier/ml-fasttext"]
-llm-apple-foundation = ["language-identifier/llm-apple-foundation"]
 
 [dependencies]
 language-identifier = { path = "../language-identifier" }

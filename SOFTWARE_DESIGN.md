@@ -21,7 +21,7 @@ The library is designed to be robust on real-world text such as dictionary looku
 - Accept word, phrase, and multi-line paragraph (`string[]`) inputs.
 - Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`, `en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …).
 - Return a ranked candidate list with per-candidate `confidence`, a `primaryLanguage`, and a `status` of `resolved | ambiguous | mixed | unknown | unsupported`.
-- Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, context, and — when needed — an LLM.
+- Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, and surrounding context.
 - Surface a `reasons` array that explains the decision so the result is auditable.
 
 ## 3. Non-goals *(inferred)*
@@ -66,7 +66,7 @@ The library accepts either:
 | Field | Type | Description |
 | --- | --- | --- |
 | `candidates` | array of `{ language: string, confidence: number }` | Ranked candidates with calibrated confidence in `[0, 1]`. |
-| `primaryLanguage` | BCP 47 string | The selected primary language. May still be present when `status = "ambiguous"` (chosen via tie-breakers, e.g. an LLM check on context). |
+| `primaryLanguage` | BCP 47 string | The selected primary language. May still be present when `status = "ambiguous"` (the highest-confidence candidate is reported even when the gap to the next is small). |
 | `status` | enum | See below. |
 | `reasons` | array of strings | Human-readable justification — one explanation line per element. Always an array, even for trivial cases (a one-element array). |
 
@@ -75,7 +75,7 @@ The library accepts either:
 | Value | Meaning (derived from the diagram's test cases) |
 | --- | --- |
 | `resolved` | A single language clearly dominates; the confidence gap between #1 and the next candidate is significant. |
-| `ambiguous` | Candidate confidences are close and an LLM / context check was required, or the input is too short to disambiguate (e.g. a single Han character valid in both Japanese and Chinese). |
+| `ambiguous` | Candidate confidences are close, or the input is too short to disambiguate (e.g. a single Han character valid in both Japanese and Chinese). |
 | `mixed` | Multiple languages coexist in the input as first-class content (not just embedded snippets). |
 | `unknown` | No supported language could be identified. |
 | `unsupported` | The script or language detected is not in the supported set. |
@@ -115,7 +115,7 @@ The library is a staged pipeline. Input flows from the top (text input) through 
 | 7 | Context window scoring | Use surrounding sentences, paragraphs, or page context to resolve ambiguous words or phrases. |
 | 8 | User preference / app state | **Out of library scope** (see §7.1). The diagram lists this layer, but a content-only detector should not bias its verdict by user state. Consumers apply preferences on top of the returned `candidates`. |
 | 9 | Lightweight ML classifier / embedding classifier | Use a lightweight model to combine features and rerank candidate languages. |
-| 10 | LLM / Foundation Model resolver | Use a stronger model for deeper contextual reasoning when earlier layers remain uncertain. |
+| 10 | LLM / Foundation Model resolver | **Out of library scope** (see §7.1). The diagram lists this layer for completeness, but exploration showed it didn't change the user-visible result on the canonical test cases and required a substantial platform-specific bridge. Consumers needing an LLM tie-breaker wrap `identify` in their app layer. |
 | — | Final calibration & ambiguity handling | Calibrate the final confidence score and decide whether to return a language or mark the result as ambiguous. |
 
 ### 7.1 Layer notes
@@ -124,9 +124,8 @@ The library is a staged pipeline. Input flows from the top (text input) through 
 - **Layer 7 (Context window)** uses surrounding text to disambiguate single words shared across languages — critical for dictionary-app flows where a user selects one CJK character.
 - **Layer 8 (User preference)** is **not implemented in this library and is not planned.** A language detector should faithfully report what is in the text. User preferences — preferred / target language, app locale, lookup history — are application-level concerns and belong in the consumer: rerank, filter, or hide candidates returned by `identify` according to the host app's policy. This keeps the library deterministic and content-only, with no hidden side channel into the verdict.
 - **Layer 9 (Lightweight ML)** reranks the candidates produced by 0–8 using learned features.
-- **Layer 10 (LLM)** is the most expensive step and is reserved for cases where earlier layers stay ambiguous. The diagram explicitly references using a "Local LLM" to validate context in the mixed-language `JA_ZH` test case.
+- **Layer 10 (LLM)** is **deliberately out of library scope**, analogous to Layer 8. We prototyped an Apple `FoundationModels` backend in v4.2 and learned three things: (1) on the canonical `JA_ZH` (M3) test case the LLM only re-confirms the primary that Layers 0–9 already pick (`ja` at confidence 0.79), so the user-visible JSON output is unchanged with or without it; (2) on single shared CJK characters (W1) the LLM cannot beat the existing "stay Ambiguous" behavior, by design; (3) any concrete backend (Apple FoundationModels, llama.cpp, remote API) brings substantial platform-specific build/runtime complexity for marginal benefit. Consumers who need an LLM tie-breaker should wrap `identify` in their application layer where they can pick a backend appropriate to their privacy, latency, and platform constraints. The diagram retains the layer to preserve architectural fidelity.
 - **v4.1 status**: Layer 9's default impl `FastTextClassifier` ships behind the `ml-fasttext` cargo feature, backed by Meta/FAIR's `lid.176.bin` (pure-Rust `fasttext` crate v0.8 — no C++ toolchain needed). The classifier intentionally drops fastText's `zh` label so Hans/Hant disambiguation stays in Layer 3.
-- **v4.2 status**: Layer 10's default impl `AppleFoundationResolver` ships behind the `llm-apple-foundation` cargo feature, backed by Apple's on-device `SystemLanguageModel` (`FoundationModels.framework`, macOS 26+ / iOS 26+, Apple Silicon). The implementation is a thin Swift static lib bridged over a synchronous C ABI; building requires the Xcode toolchain. Per SDD §11, the on-device model means inputs never leave the device. Windows AI / Phi Silica and Android AICore backends are sketched in the resolver module layout but not implemented.
 
 ### 7.2 Final calibration & ambiguity handling
 
@@ -135,7 +134,7 @@ After every active layer reports, the calibration step:
 1. Combines scores into a single confidence distribution over candidate languages.
 2. Measures the **confidence gap** between the top candidate and the next.
    - A **significant** gap → `status: "resolved"`, the top candidate becomes `primaryLanguage`, other languages present in text are reported as embedded segments (low confidence, but still listed).
-   - A **small** gap → `status: "ambiguous"`. Layer 10 (LLM) may be invoked to choose a `primaryLanguage` from the close set.
+   - A **small** gap → `status: "ambiguous"`. The highest-confidence candidate is still reported as `primaryLanguage`; consumers can apply their own tie-breaker (e.g. an LLM, user preference, lookup history) on top of `candidates`.
 3. When multiple languages coexist as first-class content rather than embedded snippets → `status: "mixed"`.
 
 ---
@@ -521,11 +520,11 @@ The diagram is silent on hard numbers. The points below are reasonable expectati
 
 | Concern | Expectation |
 | --- | --- |
-| **Latency** | Layers 0–6 are constant-time over input length and should be < 1 ms for short input. Layer 7 (context) scales with surrounding text. Layer 9 (ML) is bounded. Layer 10 (LLM) is the dominant cost and should only fire when needed. |
+| **Latency** | Layers 0–6 are constant-time over input length and should be < 1 ms for short input. Layer 7 (context) scales with surrounding text. Layer 9 (ML) is bounded. Layer 10 is out of scope (see §7.1). |
 | **Determinism** | Layers 0–8 are deterministic. Layers 9–10 are probabilistic; the calibration step should produce stable outputs given the same model versions. |
 | **Memory** | Layer 5 (dictionaries) dominates static memory; should be lazy-loaded per supported language. |
-| **Throughput** | The fast path (layers 0–6 only) is expected to be the common case; the LLM path should be measured but is acceptable for interactive use (word lookup, paragraph at a time), not high-throughput batch. |
-| **Offline operation** | Layers 0–9 must work offline. Layer 10 may require a local-LLM option (the `JA_ZH` test case explicitly mentions "Local LLM"). |
+| **Throughput** | The fast path (layers 0–6 only) is expected to be the common case; the Layer 9 path is acceptable for interactive use (word lookup, paragraph at a time), not high-throughput batch. |
+| **Offline operation** | Layers 0–9 work offline. The library performs no network I/O at all. |
 
 ---
 
@@ -539,14 +538,13 @@ Behavior for edge cases not covered explicitly in the diagram:
 | Whitespace-only / punctuation-only input | `{ status: "unknown", candidates: [] }` |
 | Script not in supported set (e.g. Arabic, Thai when only en/vi/ja/ko/zh are configured) | `{ status: "unsupported", candidates: [] }` |
 | Latin-script input in an unsupported language (e.g. French, German, Spanish) | When a Layer 9 `MlClassifier` opts into [`unsupported_signal`](#71-layer-notes) and reports a confidence ≥ 0.50 on a non-supported tag, `{ status: "unsupported", candidates: [] }` with a reason naming the detected language. Without a classifier — or with a classifier that doesn't implement the signal — the Latin script defaults to `en-US` per Layer 3's vi-density rule, which is a known sharp edge (v3 behavior). |
-| Layer 10 (LLM) unavailable while needed | Fall back to the highest-confidence Layer 9 candidate; report `status: "ambiguous"` with a reason noting the fallback. |
 | Conflicting strong signals across layers | `status: "ambiguous"` per the diagram's "confidence gap is small" rule. |
 
 ---
 
 ## 11. Security & privacy *(inferred)*
 
-- **Input data exposure:** If Layer 10 calls a remote model, input text leaves the device. The library should expose a configuration to disable Layer 10, restrict it to a local model, or require user opt-in for remote calls. v4 satisfies this by gating Layer 10 behind an explicit `IdentifyOptions::llm_resolver` opt-in; the no-arg `identify` API never invokes Layer 10.
+- **Input data exposure:** The library performs no network I/O. All computation is local and deterministic; Layer 10 (which would otherwise be the only network path) is deliberately out of scope (see §7.1). Consumers that add their own LLM tie-breaker on top of `identify` are responsible for any data-exposure decisions that entails.
 - **User preference:** Layer 8 is intentionally out of scope (see §7.1) — the library never reads user preference, app locale, or history, so there is no preference data to protect or transmit.
 - **No persistence:** The library should not retain input text after a call returns.
 - **Logging:** Reasons returned in the output may quote portions of input. Consumers logging the output should be aware that input fragments may surface.
@@ -569,10 +567,10 @@ Behavior for edge cases not covered explicitly in the diagram:
 ### Resolved by design (not implemented)
 
 3. ~~**API surface for Layer 8.**~~ Layer 8 is **out of library scope** (see §7.1). A language detector should report what is in the input; biasing the verdict with user state (preferred language, app locale, lookup history) makes the library less truthful as a primitive and adds a hidden side channel into the result. Consumers apply preferences on top of the returned `candidates` — rerank, filter, or surface them in the UI according to host-app policy. There is no Layer 8 API and none is planned.
+2. ~~**Layer 10 deployment (LLM bundled vs remote).**~~ Resolved by dropping Layer 10 from library scope entirely (see §7.1). A v4.2 prototype using Apple's on-device `FoundationModels` confirmed it didn't move the user-visible result on M3 (Layers 0–9 already pick `ja`) and required a substantial platform-specific bridge. Consumers needing an LLM tie-breaker wrap `identify` in their application layer where the bundled-vs-remote choice is theirs to make against their own privacy and latency budget.
 
 ### Still open
 
-2. **Layer 10 deployment.** Is the LLM bundled (local, e.g. small on-device model) or remote? Case M3 says "Local LLM is used", which suggests a local model is part of the design.
 7. **Expected outputs for `EN_VI`, `VI_JA`, `VI_ZH`.** Listed in §8.5 as pending — fill in once decided.
 9. **Segment offsets are into normalized text, not the caller's original input.** Callers needing to highlight spans in the original string need a v4 mapping back through NFC + whitespace collapse.
 10. **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`, `etc.`) over-splits sentences. Cosmetic only — per-token attributions still aggregate correctly to the same language — but the `reason` notes can be misleading.

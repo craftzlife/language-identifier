@@ -47,7 +47,6 @@ fn english_paragraph_keeps_english_primary() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("This is an English sentence about cats.", &opts);
     assert_eq!(r.primary_language.as_deref(), Some("en"), "{r:?}");
@@ -65,7 +64,6 @@ fn vietnamese_paragraph_keeps_vietnamese_primary() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("Đây là một câu tiếng Việt về mèo.", &opts);
     assert_eq!(r.primary_language.as_deref(), Some("vi"), "{r:?}");
@@ -76,7 +74,6 @@ fn japanese_paragraph_keeps_japanese_primary() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("これは日本語の文です。", &opts);
     assert_eq!(r.primary_language.as_deref(), Some("ja"), "{r:?}");
@@ -87,7 +84,6 @@ fn korean_paragraph_keeps_korean_primary() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("이것은 한국어 문장입니다.", &opts);
     assert_eq!(r.primary_language.as_deref(), Some("ko"), "{r:?}");
@@ -98,7 +94,6 @@ fn simplified_chinese_routes_zh_to_zh_hans() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("这是一个中文句子。", &opts);
     assert_eq!(r.primary_language.as_deref(), Some("zh-Hans"), "{r:?}");
@@ -125,7 +120,6 @@ fn traditional_chinese_routes_zh_to_zh_hant() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     // `學` is a Hant-only marker per Layer 3.
     let r = identify_with("這是繁體中文的句子。", &opts);
@@ -147,7 +141,6 @@ fn french_input_downgrades_to_unsupported() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("Bonjour le monde", &opts);
     assert_eq!(r.status, Status::Unsupported, "{r:?}");
@@ -170,7 +163,6 @@ fn chinese_input_is_not_downgraded_despite_zh_drop_in_classify() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let r = identify_with("这是一个中文句子。", &opts);
     assert_ne!(r.status, Status::Unsupported, "{r:?}");
@@ -182,7 +174,6 @@ fn classifier_reused_across_calls() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
-        llm_resolver: None,
     };
     let a = identify_with("Hello there.", &opts);
     let b = identify_with("How are you today?", &opts);

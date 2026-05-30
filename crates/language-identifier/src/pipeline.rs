@@ -175,23 +175,8 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     let hints = CalibrationHints {
         context_multi_language: context.multi_language,
     };
-    let mut cal = calibrate(ranked, normalized.visible_chars, hints);
+    let cal = calibrate(ranked, normalized.visible_chars, hints);
     notes.push(cal.note);
-
-    if cal.status == Status::Ambiguous {
-        if let Some(resolver) = opts.llm_resolver {
-            match resolver.resolve(&normalized.text, &cal.candidates) {
-                Some(primary) => {
-                    notes.push(format!(
-                        "Layer 10 (LLM) refined primary language to '{primary}'"
-                    ));
-                    cal.primary_language = Some(primary);
-                }
-                None => notes
-                    .push("Layer 10 (LLM) returned no decision — keeping pre-LLM primary".into()),
-            }
-        }
-    }
 
     IdentifyResult {
         candidates: cal.candidates,

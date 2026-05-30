@@ -6,23 +6,16 @@ use language_identifier::{identify_lines_with, identify_with, IdentifyOptions};
 #[cfg(feature = "ml-fasttext")]
 use language_identifier::FastTextClassifier;
 
-#[cfg(all(target_os = "macos", feature = "llm-apple-foundation"))]
-use language_identifier::AppleFoundationResolver;
-
 const USAGE: &str = "\
 Usage:
-  language-identifier [--pretty] [--ml-fasttext <path>] [--llm-apple-foundation] <text>
-  language-identifier [--pretty] [--ml-fasttext <path>] [--llm-apple-foundation] -
+  language-identifier [--pretty] [--ml-fasttext <path>] <text>
+  language-identifier [--pretty] [--ml-fasttext <path>] -
 
-  --pretty                  Output indented JSON
-  --ml-fasttext <path>      Enable Layer 9 using the lid.176.bin model at <path>
-                            (requires --features ml-fasttext at build time)
-  --llm-apple-foundation    Enable Layer 10 using Apple's on-device
-                            FoundationModels system model (macOS 26+,
-                            requires --features llm-apple-foundation at
-                            build time)
-  -                         Read one input per line from stdin and identify
-                            them as an array
+  --pretty                Output indented JSON
+  --ml-fasttext <path>    Enable Layer 9 using the lid.176.bin model at <path>
+                          (requires --features ml-fasttext at build time)
+  -                       Read one input per line from stdin and identify
+                          them as an array
 ";
 
 fn main() -> ExitCode {
@@ -50,16 +43,6 @@ fn main() -> ExitCode {
         }
     };
 
-    let mut llm_apple = false;
-    args.retain(|a| {
-        if a == "--llm-apple-foundation" {
-            llm_apple = true;
-            false
-        } else {
-            true
-        }
-    });
-
     if args.is_empty() {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
@@ -83,28 +66,6 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    #[cfg(all(target_os = "macos", feature = "llm-apple-foundation"))]
-    let resolver = if llm_apple {
-        match AppleFoundationResolver::new() {
-            Ok(r) => Some(r),
-            Err(e) => {
-                eprintln!("--llm-apple-foundation: {e}");
-                return ExitCode::from(2);
-            }
-        }
-    } else {
-        None
-    };
-
-    #[cfg(not(all(target_os = "macos", feature = "llm-apple-foundation")))]
-    if llm_apple {
-        eprintln!(
-            "--llm-apple-foundation requires building with \
-             `--features llm-apple-foundation` on macOS 26+"
-        );
-        return ExitCode::from(2);
-    }
-
     let opts = IdentifyOptions {
         #[cfg(feature = "ml-fasttext")]
         ml_classifier: classifier
@@ -112,12 +73,6 @@ fn main() -> ExitCode {
             .map(|c| c as &dyn language_identifier::MlClassifier),
         #[cfg(not(feature = "ml-fasttext"))]
         ml_classifier: None,
-        #[cfg(all(target_os = "macos", feature = "llm-apple-foundation"))]
-        llm_resolver: resolver
-            .as_ref()
-            .map(|r| r as &dyn language_identifier::LlmResolver),
-        #[cfg(not(all(target_os = "macos", feature = "llm-apple-foundation")))]
-        llm_resolver: None,
     };
 
     let result = if args.len() == 1 && args[0] == "-" {

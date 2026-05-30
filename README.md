@@ -22,7 +22,7 @@ pipeline spec.
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
 | 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | 9. Lightweight ML classifier | ✅ v4.1 (default impl `FastTextClassifier` behind `ml-fasttext` feature) |
-| 10. LLM resolver | 🔧 v4 scaffolded (trait + hook); default impl in v4.2 |
+| 10. LLM resolver | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
 Supported languages: `en-US`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi-VN`, `ko`.
@@ -58,17 +58,15 @@ The `IdentifyResult` implements `serde::Serialize`, so callers can produce the J
 let json = serde_json::to_string_pretty(&identify("Teacher")).unwrap();
 ```
 
-### Customizing detection (Layers 9 & 10)
+### Customizing detection (Layer 9)
 
 `identify` / `identify_lines` run Layers 0–7 only. To opt into Layer 9
-(a lightweight ML classifier) or Layer 10 (an LLM disambiguator), use
-`identify_with` / `identify_lines_with` and supply trait
-implementations through `IdentifyOptions`:
+(a lightweight ML classifier), use `identify_with` /
+`identify_lines_with` and supply a trait implementation through
+`IdentifyOptions`:
 
 ```rust
-use language_identifier::{
-    identify_with, IdentifyOptions, MlClassifier, LlmResolver, Candidate,
-};
+use language_identifier::{identify_with, IdentifyOptions, MlClassifier};
 
 struct MyClassifier;
 impl MlClassifier for MyClassifier {
@@ -78,32 +76,21 @@ impl MlClassifier for MyClassifier {
     }
 }
 
-struct MyLlm;
-impl LlmResolver for MyLlm {
-    fn resolve(&self, text: &str, candidates: &[Candidate]) -> Option<String> {
-        // Inspect the close-call candidate set and pick one — or
-        // return None to defer to the deterministic ranking.
-        Some(candidates[0].language.clone())
-    }
-}
-
 let ml = MyClassifier;
-let llm = MyLlm;
 let opts = IdentifyOptions {
     ml_classifier: Some(&ml),
-    llm_resolver: Some(&llm),
 };
 let r = identify_with("先生", &opts);
 ```
 
 Layer 9 (when provided) folds its scores into aggregation as a capped
-bonus. Layer 10 (when provided) fires **only when calibration returns
-`status: "ambiguous"`** and may refine `primaryLanguage` without
-changing the status — the LLM's opinion is recorded in `reasons`.
-
-A default `LlmResolver` lands in v4.2. A default `MlClassifier` —
+bonus. A bundled `MlClassifier` —
 [`FastTextClassifier`](#layer-9-with-the-bundled-fasttext-default-v41) —
-ships in v4.1 behind the `ml-fasttext` cargo feature; see below.
+ships behind the `ml-fasttext` cargo feature; see below. Layer 10
+(LLM tie-breaker) is deliberately out of library scope — see
+[SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes). Consumers needing
+LLM-based disambiguation should wrap `identify` in their application
+layer.
 
 ### Layer 9 with the bundled fastText default (v4.1)
 
@@ -132,7 +119,6 @@ let classifier = FastTextClassifier::builder()
     .build()?;
 let opts = IdentifyOptions {
     ml_classifier: Some(&classifier),
-    llm_resolver: None,
 };
 let r = identify_with("Bonjour le monde", &opts);
 ```
@@ -289,7 +275,8 @@ See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for field s
 
 - **`HanAmbiguous` spans still surface as `zh`** (the variant-unclear umbrella
   tag). Disambiguating an isolated Han snippet to `ja` vs `zh-Hans` vs
-  `zh-Hant` *without* kana or markers requires Layer 9/10 (ML / LLM).
+  `zh-Hant` *without* kana or markers requires Layer 9 (the bundled
+  fastText classifier) or an application-layer LLM tie-breaker.
 - **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`) over-splits
   sentences. Per-token attribution still aggregates correctly to the same
   language, so this is cosmetic in the `reason` notes but doesn't change
