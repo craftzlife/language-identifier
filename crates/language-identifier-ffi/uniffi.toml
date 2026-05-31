@@ -1,0 +1,6 @@
+[bindings.swift]
+module_name = "LanguageIdentifier"
+ffi_module_name = "LanguageIdentifierFFI"
+
+[bindings.kotlin]
+package_name = "io.languageidentifier"

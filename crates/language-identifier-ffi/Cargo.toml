@@ -1,0 +1,24 @@
+[package]
+name = "language-identifier-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Native bindings for language-identifier — UniFFI (Swift/Kotlin) plus a plain C ABI (P/Invoke, C++)."
+build = "build.rs"
+
+[lib]
+name = "language_identifier_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+language-identifier = { path = "../language-identifier" }
+serde_json = { workspace = true }
+uniffi = { workspace = true }
+
+[build-dependencies]
+cbindgen = "0.27"

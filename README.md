@@ -215,6 +215,33 @@ segment's `text` is the slice between those offsets.
 one span covering the whole text. For `unknown` / `unsupported` status it is
 an empty array.
 
+## Native bindings (Swift, Kotlin, C#, C++)
+
+For non-Rust consumers, the [`language-identifier-ffi`](./crates/language-identifier-ffi/)
+crate exposes the same `identify` / `identify_lines` API as a single
+`.dylib` / `.so` / `.dll` plus generated language bindings. Two transports
+ship in one artifact:
+
+| Platform        | Language | Transport                                  | Build script |
+| --------------- | -------- | ------------------------------------------ | ------------ |
+| iOS, macOS      | Swift    | UniFFI → XCFramework                       | [`scripts/build-apple.sh`](./crates/language-identifier-ffi/scripts/build-apple.sh)     |
+| Android         | Kotlin   | UniFFI → `jniLibs/` + `.kt`                | [`scripts/build-android.sh`](./crates/language-identifier-ffi/scripts/build-android.sh) |
+| Windows         | C# / any | C ABI + cbindgen header (P/Invoke)         | [`scripts/build-windows.sh`](./crates/language-identifier-ffi/scripts/build-windows.sh) |
+| Linux           | C++ / any| C ABI + cbindgen header                    | [`scripts/build-linux.sh`](./crates/language-identifier-ffi/scripts/build-linux.sh)     |
+
+The C ABI surface is three functions — `lid_identify`, `lid_identify_lines`,
+`lid_string_free` — returning the same JSON-encoded `IdentifyResult`
+described under [Output schema](#output-schema). The header is generated
+by `cbindgen` on every cargo build at
+`target/c-header/language_identifier.h`.
+
+UniFFI symbols and the C ABI coexist in the same compiled library, so the
+artifact you ship can be consumed by either transport. The `ml-fasttext`
+feature is intentionally not enabled in the FFI crate — mobile apps can't
+realistically bundle the 126 MB model, and desktop consumers can call the
+Rust API directly. Each build script's header comment lists its one-time
+prerequisites (rustup targets, Android NDK, MinGW, `cross`, …).
+
 ## Output schema
 
 ```jsonc
@@ -265,8 +292,16 @@ See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for field s
 │   │       ├── layer5.rs                   # dictionary integration tests
 │   │       ├── segments.rs                 # span-output tests
 │   │       └── mixed.rs                    # Mixed status tests
-│   └── language-identifier-cli/            # binary crate
-│       └── src/main.rs
+│   ├── language-identifier-cli/            # binary crate
+│   │   └── src/main.rs
+│   └── language-identifier-ffi/            # native bindings (UniFFI + C ABI)
+│       ├── src/
+│       │   ├── lib.rs                      # UniFFI proc-macro exports (Swift / Kotlin)
+│       │   ├── c_abi.rs                    # extern "C" surface (Windows / Linux / generic)
+│       │   └── bin/uniffi-bindgen.rs
+│       ├── build.rs + cbindgen.toml        # emits target/c-header/language_identifier.h
+│       ├── uniffi.toml                     # Swift module + Kotlin package names
+│       └── scripts/build-{apple,android,windows,linux}.sh
 ├── SOFTWARE_DESIGN.md                      # full design document
 └── language-identifier-library.drawio      # diagram source of truth
 ```
