@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re-)build a release for (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # required by softprops/action-gh-release to upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  apple:
+    name: Apple (macOS + iOS XCFramework)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build XCFramework
+        run: bash crates/language-identifier-ffi/scripts/build-apple.sh
+
+      - name: Package
+        run: |
+          cd target/apple
+          zip -r "${{ github.workspace }}/LanguageIdentifier-apple-${RELEASE_TAG}.zip" \
+            LanguageIdentifier.xcframework swift
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: LanguageIdentifier-apple-${{ env.RELEASE_TAG }}.zip
+          draft: false
+          fail_on_unmatched_files: true
+
+  android:
+    name: Android (jniLibs + Kotlin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26d
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash crates/language-identifier-ffi/scripts/build-android.sh
+
+      - name: Package
+        run: |
+          cd target/android
+          zip -r "${{ github.workspace }}/LanguageIdentifier-android-${RELEASE_TAG}.zip" \
+            jniLibs kotlin
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: LanguageIdentifier-android-${{ env.RELEASE_TAG }}.zip
+          draft: false
+          fail_on_unmatched_files: true
+
+  windows:
+    name: Windows (DLLs + C header)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: bash crates/language-identifier-ffi/scripts/build-windows.sh
+
+      - name: Package
+        run: |
+          cd target/windows
+          7z a "${GITHUB_WORKSPACE}/LanguageIdentifier-windows-${RELEASE_TAG}.zip" x86_64 aarch64 include
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: LanguageIdentifier-windows-${{ env.RELEASE_TAG }}.zip
+          draft: false
+          fail_on_unmatched_files: true
+
+  linux:
+    name: Linux (.so + C header)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cross
+        run: cargo install cross --locked
+
+      - name: Build
+        env:
+          CROSS: '1'
+        run: bash crates/language-identifier-ffi/scripts/build-linux.sh
+
+      - name: Package
+        run: |
+          cd target/linux
+          tar czf "${GITHUB_WORKSPACE}/LanguageIdentifier-linux-${RELEASE_TAG}.tar.gz" \
+            x86_64 aarch64 include
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: LanguageIdentifier-linux-${{ env.RELEASE_TAG }}.tar.gz
+          draft: false
+          fail_on_unmatched_files: true
