@@ -45,7 +45,7 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     // is confident the input is in a language outside the supported
     // set (e.g. French through an en/vi/ja/ko/zh-only library), bail
     // to `Status::Unsupported` rather than let the deterministic Latin
-    // path force the verdict onto en-US.
+    // path force the verdict onto en.
     if let Some(classifier) = opts.ml_classifier {
         if let Some(sig) = classifier.unsupported_signal(&normalized.text) {
             if sig.confidence >= ML_UNSUPPORTED_THRESHOLD {

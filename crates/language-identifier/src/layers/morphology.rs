@@ -62,7 +62,7 @@ fn attribute_one(token: &str) -> Option<&'static str> {
         return None;
     }
 
-    // Rule 1: any VI-only diacritic ⇒ vi-VN, full stop.
+    // Rule 1: any VI-only diacritic ⇒ vi, full stop.
     if token.chars().any(is_vi_marker_char) {
         return Some("vi");
     }
@@ -80,8 +80,8 @@ fn attribute_one(token: &str) -> Option<&'static str> {
 }
 
 /// Vietnamese-only initial / final consonant clusters that are extremely
-/// uncommon in English. If a token shows one of these, prefer vi-VN; else
-/// fall back to en-US as the safer default.
+/// uncommon in English. If a token shows one of these, prefer vi; else
+/// fall back to en as the safer default.
 fn disambiguate_by_shape(token: &str) -> &'static str {
     const VI_INITIALS: &[&str] = &["ng", "nh", "tr", "ph", "kh", "th", "ch", "gi", "qu"];
     const VI_FINALS: &[&str] = &["ng", "nh", "ch"];
@@ -93,7 +93,7 @@ fn disambiguate_by_shape(token: &str) -> &'static str {
         "vi"
     } else {
         // VI shape is suggestive but not exclusive — `th`, `ng`, `ch` all
-        // appear in English too. Default to en-US when only one indicator hits.
+        // appear in English too. Default to en when only one indicator hits.
         "en"
     }
 }

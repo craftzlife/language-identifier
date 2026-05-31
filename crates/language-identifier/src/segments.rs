@@ -11,7 +11,7 @@ use crate::types::Segment;
 ///
 /// `latin_attribution` (from Layer 6) overrides the per-char Latin rule for
 /// any char index inside an attributed token's span — this produces clean
-/// per-word EN vs vi-VN segments for mixed Latin input.
+/// per-word EN vs VI segments for mixed Latin input.
 pub fn extract(
     input: &Normalized,
     ortho: &OrthoSignals,

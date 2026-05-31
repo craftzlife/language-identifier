@@ -42,7 +42,7 @@ fn dictionary_finds_shared_cjk_term_in_both_langs() {
 fn dictionary_handles_unknown_tokens_gracefully() {
     // Made-up token nobody knows.
     let r = identify("xqzplmwyt");
-    // Should not crash; result may be Resolved en-US via script fallback.
+    // Should not crash; result may be Resolved en via script fallback.
     assert!(matches!(
         r.status,
         Status::Resolved | Status::Ambiguous | Status::Unknown | Status::Mixed
@@ -54,7 +54,7 @@ fn vietnamese_lexicon_boosts_diacritic_free_vi_text() {
     // VI text without precomposed diacritics; only dictionary lookup can
     // recognize it. Frequency lexicon should hit on "la", "cua", "co", "khong".
     let r = identify("la cua co khong");
-    // Won't necessarily land on vi-VN because these tokens overlap heavily
+    // Won't necessarily land on vi because these tokens overlap heavily
     // with junk-ASCII, but should produce a candidate.
     let _ = r;
 }

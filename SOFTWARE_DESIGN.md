@@ -19,7 +19,7 @@ The library is designed to be robust on real-world text such as dictionary looku
 ## 2. Goals
 
 - Accept word, phrase, and multi-line paragraph (`string[]`) inputs.
-- Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`, `en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …).
+- Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`). Locale subtags (`en-US`, `vi-VN`, `zh-CN`, …) are deliberately out of scope — see §3.
 - Return a ranked candidate list with per-candidate `confidence`, a `primaryLanguage`, and a `status` of `resolved | ambiguous | mixed | unknown | unsupported`.
 - Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, and surrounding context.
 - Surface a `reasons` array that explains the decision so the result is auditable.
@@ -171,7 +171,7 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 1.0 }
+    { "language": "en", "confidence": 1.0 }
   ],
   "status": "resolved",
   "reasons": []
@@ -223,11 +223,11 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 1.0 }
+    { "language": "en", "confidence": 1.0 }
   ],
   "status": "resolved",
   "reasons": ["All English US detected"],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
@@ -317,11 +317,11 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 1.0 }
+    { "language": "en", "confidence": 1.0 }
   ],
   "status": "resolved",
   "reasons": ["All English US detected"],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
@@ -369,16 +369,16 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 0.74 },
+    { "language": "en", "confidence": 0.74 },
     { "language": "ja", "confidence": 0.05 }
   ],
   "status": "resolved",
   "reasons": [
-    "There are US English and Japanese (Han traditional combined using with Kana characters), so language code [en-US, ja] are picked candidates",
+    "There are English and Japanese (Han traditional combined using with Kana characters), so language code [en, ja] are picked candidates",
     "English words is 74.68%, Japanese Kana is 5.61%",
-    "The candidate confidence gap is significant so en-US is picked as the primary language, Japanese text is just embedded language segment"
+    "The candidate confidence gap is significant so en is picked as the primary language, Japanese text is just embedded language segment"
   ],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
@@ -399,16 +399,16 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 0.74 },
+    { "language": "en", "confidence": 0.74 },
     { "language": "zh-Hans", "confidence": 0.05 }
   ],
   "status": "resolved",
   "reasons": [
-    "There are US English and Han simplified. The phrases embedded here (王先生今天在大学教中文 and 中文老师在大学上课) follow Chinese grammar rules directly without any Japanese particles. The characters '老师' (teacher), '学' (study/university), and '国' (implied in country terms) are explicitly written in their Simplified Chinese forms. No Japanese Kana Presence. therefor language code [en-US, zh-Hans] are picked candidates",
+    "There are English and Han simplified. The phrases embedded here (王先生今天在大学教中文 and 中文老师在大学上课) follow Chinese grammar rules directly without any Japanese particles. The characters '老师' (teacher), '学' (study/university), and '国' (implied in country terms) are explicitly written in their Simplified Chinese forms. No Japanese Kana Presence. therefor language code [en, zh-Hans] are picked candidates",
     "English words is 78.49%, Chinese Simplified is 4.37%",
-    "The candidate confidence gap is significant so en-US is picked as the primary language, Chinese Simplified text is just embedded language segment"
+    "The candidate confidence gap is significant so en is picked as the primary language, Chinese Simplified text is just embedded language segment"
   ],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
@@ -439,11 +439,11 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
     "Japanese Kana is 39.37%, Chinese Traditional is 30.43%, Chinese Simplified is 9.42%",
     "The candidate confidence gap is small, so detection status is 'ambiguous'. Local LLM is used to validated the context of input text, Japanese is primaryLanguage, Chinese text is just embedded language segment"
   ],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
-> **Note:** The `primaryLanguage` value `"en-US"` in this case appears inconsistent with the reason text, which says "Japanese is primaryLanguage". Preserved verbatim from the diagram; should be reconciled (likely should be `"ja"`).
+> **Note:** The `primaryLanguage` value `"en"` in this case appears inconsistent with the reason text, which says "Japanese is primaryLanguage". Preserved verbatim from the diagram; should be reconciled (likely should be `"ja"`).
 
 #### Case M4: `EN_JA_ZH_VI` — four-language meta-discussion
 
@@ -462,19 +462,19 @@ All inputs and outputs below are reproduced verbatim from the diagram. They defi
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 0.66 },
-    { "language": "vi-VN", "confidence": 0.06 },
+    { "language": "en", "confidence": 0.66 },
+    { "language": "vi", "confidence": 0.06 },
     { "language": "zh-Hant", "confidence": 0.05 },
     { "language": "ja", "confidence": 0.02 },
     { "language": "zh-Hans", "confidence": 0.00 }
   ],
   "status": "ambiguous",
   "reasons": [
-    "The input acts as a meta-language discussion where English functions as the carrier script across all three segments. Vietnamese is injected through short colloquial phrases sharing the Latin alphabet framework but identified by exclusive diacritic combinations (tiếng Việt, Tôi muốn). The CJK cluster contains overlapping Hanzi/Kanji (先生, 大学) which natively maps to both Japanese and Traditional Chinese, though specific Kana indicators (は, で, を) anchor the target examples to Japanese, while a single instance of 老师 targets Simplified Chinese. Therefore, [en-US, vi-VN, zh-Hant, ja] are selected as the primary candidates.",
+    "The input acts as a meta-language discussion where English functions as the carrier script across all three segments. Vietnamese is injected through short colloquial phrases sharing the Latin alphabet framework but identified by exclusive diacritic combinations (tiếng Việt, Tôi muốn). The CJK cluster contains overlapping Hanzi/Kanji (先生, 大学) which natively maps to both Japanese and Traditional Chinese, though specific Kana indicators (は, で, を) anchor the target examples to Japanese, while a single instance of 老师 targets Simplified Chinese. Therefore, [en, vi, zh-Hant, ja] are selected as the primary candidates.",
     "English is 66.42%, Vietnamese is 6.42%, Chinese Traditional/Kanji is 5.87%, Japanese Kana is 2.94%, Chinese Simplified is 0.37%",
     "Multiple distinct language systems coexist within single-sentence boundaries, rendering a single-result classification invalid. Contextual mapping verifies that English handles the primary syntax framework, while Vietnamese, Japanese, and Chinese serve strictly as nested, embedded reference segments."
   ],
-  "primaryLanguage": "en-US"
+  "primaryLanguage": "en"
 }
 ```
 
@@ -537,7 +537,7 @@ Behavior for edge cases not covered explicitly in the diagram:
 | Empty string or empty array | `{ status: "unknown", candidates: [] }` |
 | Whitespace-only / punctuation-only input | `{ status: "unknown", candidates: [] }` |
 | Script not in supported set (e.g. Arabic, Thai when only en/vi/ja/ko/zh are configured) | `{ status: "unsupported", candidates: [] }` |
-| Latin-script input in an unsupported language (e.g. French, German, Spanish) | When a Layer 9 `MlClassifier` opts into [`unsupported_signal`](#71-layer-notes) and reports a confidence ≥ 0.50 on a non-supported tag, `{ status: "unsupported", candidates: [] }` with a reason naming the detected language. Without a classifier — or with a classifier that doesn't implement the signal — the Latin script defaults to `en-US` per Layer 3's vi-density rule, which is a known sharp edge (v3 behavior). |
+| Latin-script input in an unsupported language (e.g. French, German, Spanish) | When a Layer 9 `MlClassifier` opts into [`unsupported_signal`](#71-layer-notes) and reports a confidence ≥ 0.50 on a non-supported tag, `{ status: "unsupported", candidates: [] }` with a reason naming the detected language. Without a classifier — or with a classifier that doesn't implement the signal — the Latin script defaults to `en` per Layer 3's vi-density rule, which is a known sharp edge (v3 behavior). |
 | Conflicting strong signals across layers | `status: "ambiguous"` per the diagram's "confidence gap is small" rule. |
 
 ---
@@ -561,8 +561,8 @@ Behavior for edge cases not covered explicitly in the diagram:
 
 ### Resolved in v3 of the implementation
 
-5. ~~**Inconsistent `primaryLanguage` in Case M3.**~~ v3 implements the diagram's stated behavior: M3 returns `status: "ambiguous"` with `primaryLanguage: "ja"`. The diagram's `"en-US"` value in the JSON output is treated as a typo. Layer 7 (context window) detects the embedded Chinese phrases via an intra-sentence Han-run signal and downgrades Resolved → Ambiguous while keeping `ja` as the primary.
-8. ~~**Dictionary-aware Latin sub-segmentation.**~~ Layer 6 (morphology / tokenization hints) now attributes each Latin token to `en-US` or `vi-VN` using lexicon membership + VI syllable shape. Aggregate uses these per-token attributions to split the Latin script proportionally, producing genuine EN+VI `Mixed` status when both languages have meaningful content.
+5. ~~**Inconsistent `primaryLanguage` in Case M3.**~~ v3 implements the diagram's stated behavior: M3 returns `status: "ambiguous"` with `primaryLanguage: "ja"`. The diagram's `"en"` value in the JSON output is treated as a typo. Layer 7 (context window) detects the embedded Chinese phrases via an intra-sentence Han-run signal and downgrades Resolved → Ambiguous while keeping `ja` as the primary.
+8. ~~**Dictionary-aware Latin sub-segmentation.**~~ Layer 6 (morphology / tokenization hints) now attributes each Latin token to `en` or `vi` using lexicon membership + VI syllable shape. Aggregate uses these per-token attributions to split the Latin script proportionally, producing genuine EN+VI `Mixed` status when both languages have meaningful content.
 
 ### Resolved by design (not implemented)
 

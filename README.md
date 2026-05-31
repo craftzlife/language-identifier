@@ -25,7 +25,7 @@ pipeline spec.
 | 10. LLM resolver | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
-Supported languages: `en-US`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi-VN`, `ko`.
+Supported languages: `en`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi`, `ko`.
 
 ## Build
 
@@ -43,7 +43,7 @@ use language_identifier::{identify, identify_lines, Status};
 
 let r = identify("giáo viên đại học");
 assert_eq!(r.status, Status::Resolved);
-assert_eq!(r.primary_language.as_deref(), Some("vi-VN"));
+assert_eq!(r.primary_language.as_deref(), Some("vi"));
 
 let r = identify_lines(&[
     "田中先生は大学で日本語を教えています。",
@@ -72,7 +72,7 @@ struct MyClassifier;
 impl MlClassifier for MyClassifier {
     fn classify(&self, text: &str) -> Vec<(String, f32)> {
         // Return per-language confidence over BCP 47 tags.
-        vec![("en-US".into(), 0.92), ("vi-VN".into(), 0.04)]
+        vec![("en".into(), 0.92), ("vi".into(), 0.04)]
     }
 }
 
@@ -133,25 +133,30 @@ cargo run --features ml-fasttext -p language-identifier-cli -- \
 `FastTextClassifier` maps lid.176's labels into the library's BCP 47
 set as follows:
 
-| fastText label  | mapped tag |
-| --------------- | ---------- |
-| `__label__en`   | `en-US`    |
-| `__label__vi`   | `vi-VN`    |
-| `__label__ja`   | `ja`       |
-| `__label__ko`   | `ko`       |
-| `__label__zh`   | *dropped*  |
-| any other       | *dropped*  |
+| fastText label  | mapped tag                        |
+| --------------- | --------------------------------- |
+| `__label__en`   | `en`                              |
+| `__label__vi`   | `vi`                              |
+| `__label__ja`   | `ja`                              |
+| `__label__ko`   | `ko`                              |
+| `__label__zh`   | `zh-Hant` or `zh-Hans` (see below) |
+| any other       | *dropped*                         |
 
-`__label__zh` is intentionally dropped: lid.176 does not split
-`zh-Hans` vs `zh-Hant`, and Hans/Hant disambiguation is the
-deterministic job of Layer 3 (orthography markers). Layer 9 earns its
-keep on cross-script ties, not on Han-variant decisions.
+lid.176 emits a single `__label__zh` without splitting Hans vs Hant. The
+library promotes the label to a concrete variant in
+[`bcp47::resolve_zh`](./crates/language-identifier/src/bcp47.rs): if the
+normalized input contains any Traditional-only character (per Layer 3's
+orthography table) the label becomes `zh-Hant`, otherwise it defaults to
+the modern `zh-Hans`. Layer 3's explicit Hans-only marker path still
+wins when both signals fire — Layer 9 earns its keep on cross-script
+ties and on pure-Han inputs that have no kana to anchor them to
+Japanese.
 
 **Unsupported-language downgrade.** When `FastTextClassifier` is
 confident the input is in a language outside the supported set (e.g.
 French through this `{en, vi, ja, ko, zh-*}`-only library), the
 pipeline returns `status: "unsupported"` instead of forcing the
-verdict onto `en-US` via the Latin-script default. The threshold is
+verdict onto `en` via the Latin-script default. The threshold is
 0.50 confidence; the `zh` umbrella label is treated as supported here
 so pure-Han inputs are never downgraded. Custom `MlClassifier` impls
 can opt into this behavior by overriding the trait's
@@ -184,11 +189,11 @@ $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは wor
 ```json
 {
   "candidates": [
-    { "language": "en-US", "confidence": 0.61 },
-    { "language": "ja",    "confidence": 0.37 },
-    { "language": "vi-VN", "confidence": 0.02 }
+    { "language": "en", "confidence": 0.61 },
+    { "language": "ja", "confidence": 0.37 },
+    { "language": "vi", "confidence": 0.02 }
   ],
-  "primaryLanguage": "en-US",
+  "primaryLanguage": "en",
   "status": "mixed",
   "reasons": [
     "Script counts — latin:10, hiragana:5, katakana:0, han:0, hangul:0",
@@ -198,9 +203,9 @@ $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは wor
     "2 candidates each hold ≥0.20 confidence — input contains multiple languages as first-class content"
   ],
   "segments": [
-    { "language": "en-US", "start": 0,  "end": 5,  "text": "Hello" },
-    { "language": "ja",    "start": 6,  "end": 21, "text": "こんにちは" },
-    { "language": "en-US", "start": 22, "end": 27, "text": "world" }
+    { "language": "en", "start": 0,  "end": 5,  "text": "Hello" },
+    { "language": "ja", "start": 6,  "end": 21, "text": "こんにちは" },
+    { "language": "en", "start": 22, "end": 27, "text": "world" }
   ],
   "normalizedText": "Hello こんにちは world"
 }

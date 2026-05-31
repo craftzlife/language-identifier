@@ -41,7 +41,7 @@ pub trait MlClassifier: Send + Sync {
     /// into a supported tag. Useful when a French sentence reaches a
     /// library configured only for `{en, vi, ja, ko, zh-*}` — without
     /// this signal the deterministic layers would default the Latin
-    /// script to `en-US`.
+    /// script to `en`.
     ///
     /// The default impl returns `None`. Existing custom classifiers
     /// keep working unchanged; only implementors that know their

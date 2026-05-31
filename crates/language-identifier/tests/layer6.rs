@@ -13,8 +13,8 @@ fn segments_in_lang(r: &language_identifier::IdentifyResult, lang: &str) -> usiz
 
 #[test]
 fn embedded_vi_word_inside_english_produces_vi_segment() {
-    // Layer 6 attributes "thầy" as vi-VN per token; segments should show a
-    // vi-VN span at exactly the word boundary.
+    // Layer 6 attributes "thầy" as vi per token; segments should show a
+    // vi span at exactly the word boundary.
     let r = identify("I want to translate the word thầy into Japanese");
     assert_eq!(r.primary_language.as_deref(), Some("en"));
     assert!(segments_in_lang(&r, "vi") >= 1, "{r:?}");
@@ -22,19 +22,19 @@ fn embedded_vi_word_inside_english_produces_vi_segment() {
 
 #[test]
 fn multi_word_vi_phrase_in_english_groups_into_one_segment() {
-    // "giáo viên tiếng Nhật" should appear as a single contiguous vi-VN span
+    // "giáo viên tiếng Nhật" should appear as a single contiguous vi span
     // (after whitespace-merging adjacent same-language spans).
     let r = identify("I want to translate giáo viên tiếng Nhật into Japanese");
     assert_eq!(r.primary_language.as_deref(), Some("en"));
     let vi_spans: Vec<&language_identifier::Segment> =
         r.segments.iter().filter(|s| s.language == "vi").collect();
-    assert_eq!(vi_spans.len(), 1, "expected one merged vi-VN span: {r:?}");
+    assert_eq!(vi_spans.len(), 1, "expected one merged vi span: {r:?}");
 }
 
 #[test]
 fn vi_word_without_diacritic_in_vi_lexicon_still_attributes() {
     // "nguyen" appears in the VI lexicon (common surname). Even without
-    // diacritics it should be attributed to vi-VN over en-US.
+    // diacritics it should be attributed to vi over en.
     let r = identify("nguyen tran");
     assert!(
         matches!(r.primary_language.as_deref(), Some("vi") | Some("en")),
@@ -44,7 +44,7 @@ fn vi_word_without_diacritic_in_vi_lexicon_still_attributes() {
 
 #[test]
 fn en_word_overlapping_vi_lexicon_resolves_to_en_with_shape_fallback() {
-    // Pure English sentence with no diacritics should resolve to en-US even
+    // Pure English sentence with no diacritics should resolve to en even
     // though some tokens (e.g. "la") overlap the VI lexicon.
     let r = identify("the teacher and the student went to the school");
     assert_eq!(r.primary_language.as_deref(), Some("en"));
@@ -78,10 +78,10 @@ fn zh_pattern_boosts_zh_signal() {
 
 #[test]
 fn ambiguous_short_token_does_not_misclassify_pure_english() {
-    // "la la la" (overlapping vi lexicon) should still land on en-US given
-    // the en-US default for shape-ambiguous tokens.
+    // "la la la" (overlapping vi lexicon) should still land on en given
+    // the en default for shape-ambiguous tokens.
     let r = identify("la la la la la la la");
-    // Either en-US or vi-VN is defensible here. Assert no panic, no Unknown.
+    // Either en or vi is defensible here. Assert no panic, no Unknown.
     assert_ne!(r.status, Status::Unknown);
 }
 
@@ -95,7 +95,7 @@ fn morphology_bonus_does_not_break_confidence_bounds() {
 
 #[test]
 fn per_word_attribution_in_genuine_en_vi_mix() {
-    // Genuine EN+VI input — Layer 6 should produce both en-US and vi-VN spans.
+    // Genuine EN+VI input — Layer 6 should produce both en and vi spans.
     let r = identify("Hello world this is teacher meets giáo viên đại học người thầy được kính");
     assert!(segments_in_lang(&r, "en") >= 1, "{r:?}");
     assert!(segments_in_lang(&r, "vi") >= 1, "{r:?}");

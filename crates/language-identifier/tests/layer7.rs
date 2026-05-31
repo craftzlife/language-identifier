@@ -61,7 +61,7 @@ fn alternating_en_and_ja_sentences_produces_multi_language() {
         "The student answered correctly.",
         "学生は元気です。",
     ]);
-    // At minimum, both ja and en-US should be candidates.
+    // At minimum, both ja and en should be candidates.
     assert!(has_lang(&r, "en"));
     assert!(has_lang(&r, "ja"));
 }

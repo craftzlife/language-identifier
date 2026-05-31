@@ -201,7 +201,7 @@ fn m5_en_vi_carrier_with_vietnamese_embedded() {
         "When the input contains I am building a feature that helps users understand cụm từ tiếng Việt trong câu dài, the detector should recognize both English and Vietnamese.",
     ]);
     assert_eq!(top_lang(&r), "en", "M5: {r:?}");
-    assert!(has_lang(&r, "vi"), "M5 should expose vi-VN: {r:?}");
+    assert!(has_lang(&r, "vi"), "M5 should expose vi: {r:?}");
 }
 
 #[test]
