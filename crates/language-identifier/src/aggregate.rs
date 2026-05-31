@@ -183,15 +183,22 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
     if kana_w > 0.0 {
         add(w, "ja", kana_w);
         if han_w > 0.0 {
-            let han_count = input.counts.han as f32;
-            if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
-                let frac = (input.ortho.hans_markers as f32 / han_count).clamp(0.0, 0.5);
-                add(w, "zh-Hans", han_w * frac);
-                add(w, "ja", han_w * (1.0 - frac));
-            } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
-                let frac = (input.ortho.hant_markers as f32 / han_count).clamp(0.0, 0.5);
-                add(w, "zh-Hant", han_w * frac);
-                add(w, "ja", han_w * (1.0 - frac));
+            let kana_count = input.counts.kana() as f32;
+            let hans_m = input.ortho.hans_markers as f32;
+            let hant_m = input.ortho.hant_markers as f32;
+            let proof = kana_count + hans_m + hant_m;
+            if proof > 0.0 && (hans_m > 0.0 || hant_m > 0.0) {
+                // Split Han proportionally to "proof" — kana count argues for
+                // ja, marker count argues for zh-{Hans,Hant}. Prevents a small
+                // kana presence from claiming all kanji when Chinese-only
+                // markers are actually the stronger signal.
+                add(w, "ja", han_w * (kana_count / proof));
+                if hans_m > 0.0 {
+                    add(w, "zh-Hans", han_w * (hans_m / proof));
+                }
+                if hant_m > 0.0 {
+                    add(w, "zh-Hant", han_w * (hant_m / proof));
+                }
             } else {
                 add(w, "ja", han_w);
             }

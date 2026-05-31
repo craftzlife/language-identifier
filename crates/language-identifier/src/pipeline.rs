@@ -88,7 +88,15 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         ));
     }
     if counts.kana() > 0 {
-        notes.push("Japanese kana present — Han characters interpreted as kanji".into());
+        let kana = counts.kana();
+        let note = if ortho.hans_markers > kana || ortho.hant_markers > kana {
+            "Japanese kana present, but Chinese-only markers outweigh kana — Han attributed proportionally"
+        } else if ortho.hans_markers > 0 || ortho.hant_markers > 0 {
+            "Japanese kana present alongside Chinese-only markers — Han split proportionally"
+        } else {
+            "Japanese kana present — Han characters interpreted as kanji"
+        };
+        notes.push(note.into());
     }
     if !fw.per_language.is_empty() {
         let mut parts: Vec<String> = fw
@@ -192,13 +200,27 @@ fn pick_han_strategy(
     counts: &script::ScriptCounts,
     ortho: &orthography::OrthoSignals,
 ) -> HanStrategy {
-    if counts.kana() > 0 {
-        HanStrategy::JapaneseClaimsHan
-    } else if ortho.hans_markers > 0 && ortho.hant_markers == 0 {
-        HanStrategy::HansPreferred
-    } else if ortho.hant_markers > 0 && ortho.hans_markers == 0 {
-        HanStrategy::HantPreferred
-    } else {
-        HanStrategy::HanAmbiguous
+    let kana = counts.kana();
+    let hans_m = ortho.hans_markers;
+    let hant_m = ortho.hant_markers;
+
+    // Chinese-only markers can outweigh kana when they are the stronger
+    // per-character signal — Chinese-dominant text with a small kana
+    // embedding shouldn't have every kanji attributed to Japanese.
+    if hans_m > kana && hant_m == 0 {
+        return HanStrategy::HansPreferred;
     }
+    if hant_m > kana && hans_m == 0 {
+        return HanStrategy::HantPreferred;
+    }
+    if kana > 0 {
+        return HanStrategy::JapaneseClaimsHan;
+    }
+    if hans_m > 0 && hant_m == 0 {
+        return HanStrategy::HansPreferred;
+    }
+    if hant_m > 0 && hans_m == 0 {
+        return HanStrategy::HantPreferred;
+    }
+    HanStrategy::HanAmbiguous
 }
