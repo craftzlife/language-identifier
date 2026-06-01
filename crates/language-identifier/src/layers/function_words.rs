@@ -20,17 +20,49 @@ pub struct FunctionWordSignal {
     pub per_language: BTreeMap<String, usize>,
 }
 
+// Cantonese and Classical Chinese function-word tables. These languages
+// have 10K lexicons (`lexicon_yue.txt` / `lexicon_lzh.txt`) sourced from
+// Wikipedia title dumps, but those tops are noun-heavy / rare-CJK-heavy
+// rather than high-frequency particle lists — so for Layer-4 hit
+// counting we use these small curated tables instead of the lexicons'
+// top-N entries.
+const YUE_PARTICLES: &[&str] = &[
+    "嘅", "嚟", "唔", "喺", "啲", "咁", "哋", "佢", "係", "咗", "嘞", "囉", "嘥", "咩", "嘢",
+];
+const LZH_PARTICLES: &[&str] = &[
+    "之", "乎", "者", "也", "矣", "焉", "哉", "而", "於", "以", "其", "吾", "汝", "曰", "為",
+];
+
+/// Whether `token` (already lower-cased for Latin scripts) appears in
+/// language `lang`'s top-N function-word table. Exposed so Layer 6
+/// (morphology) can disambiguate Latin tokens shared across lexicons —
+/// hitting a top function word is a much stronger language signal than
+/// generic lexicon membership.
+pub fn is_top_function_word(lang: &str, token: &str) -> bool {
+    table_for(lang).contains(token)
+}
+
 fn table_for(lang: &str) -> &'static HashSet<&'static str> {
     static EN: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static FR: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static JA: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static ZH_HANS: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static ZH_HANT: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static VI: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static KO: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static YUE: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static LZH: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static EMPTY: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+    match lang {
+        "yue" => return YUE.get_or_init(|| YUE_PARTICLES.iter().copied().collect()),
+        "lzh" => return LZH.get_or_init(|| LZH_PARTICLES.iter().copied().collect()),
+        _ => {}
+    }
 
     let cell = match lang {
         "en" => &EN,
+        "fr" => &FR,
         "ja" => &JA,
         "zh-Hans" => &ZH_HANS,
         "zh-Hant" => &ZH_HANT,
@@ -71,7 +103,7 @@ pub fn score(input: &Normalized) -> FunctionWordSignal {
 
     for tok in &latin_tokens {
         let lower = tok.to_lowercase();
-        for &lang in &["en", "vi"] {
+        for &lang in &["en", "fr", "vi"] {
             if table_for(lang).contains(lower.as_str()) {
                 *sig.per_language.entry(lang.into()).or_insert(0) += 1;
             }
@@ -79,7 +111,7 @@ pub fn score(input: &Normalized) -> FunctionWordSignal {
     }
 
     // CJK / Hangul: sliding 1- and 2-char windows against each CJK table.
-    for &lang in &["ja", "zh-Hans", "zh-Hant", "ko"] {
+    for &lang in &["ja", "zh-Hans", "zh-Hant", "ko", "yue", "lzh"] {
         let table = table_for(lang);
         if table.is_empty() {
             continue;
@@ -157,10 +189,31 @@ mod tests {
     }
 
     #[test]
+    fn french_stopwords_counted() {
+        let n = normalize("le chat est sur la table et dans la maison");
+        let s = score(&n);
+        assert!(s.per_language.get("fr").copied().unwrap_or(0) >= 4);
+    }
+
+    #[test]
     fn korean_particles_counted() {
         let n = normalize("선생님은 학생을 가르치는 학교에서");
         let s = score(&n);
         assert!(s.per_language.get("ko").copied().unwrap_or(0) >= 1);
+    }
+
+    #[test]
+    fn cantonese_particles_counted() {
+        let n = normalize("我嘅學生喺學校");
+        let s = score(&n);
+        assert!(s.per_language.get("yue").copied().unwrap_or(0) >= 2);
+    }
+
+    #[test]
+    fn classical_function_words_counted() {
+        let n = normalize("學而時習之，不亦說乎");
+        let s = score(&n);
+        assert!(s.per_language.get("lzh").copied().unwrap_or(0) >= 2);
     }
 
     #[test]

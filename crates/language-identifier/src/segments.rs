@@ -78,6 +78,14 @@ pub enum HanStrategy {
     /// No kana ⇒ Han goes to zh-Hans or zh-Hant per markers.
     HansPreferred,
     HantPreferred,
+    /// Hant chars + HK markers ⇒ Han attributed to zh-Hant-HK.
+    HantHkPreferred,
+    /// Hant chars + TW markers ⇒ Han attributed to zh-Hant-TW.
+    HantTwPreferred,
+    /// Cantonese particles present ⇒ Han attributed to yue.
+    CantonesePreferred,
+    /// Classical-Chinese function-word density present ⇒ Han to lzh.
+    ClassicalPreferred,
     /// Han variant is ambiguous (no markers, no kana).
     HanAmbiguous,
 }
@@ -90,6 +98,10 @@ fn attribute(c: char, ortho: &OrthoSignals, han: HanStrategy) -> Option<&'static
             HanStrategy::JapaneseClaimsHan => Some("ja"),
             HanStrategy::HansPreferred => Some("zh-Hans"),
             HanStrategy::HantPreferred => Some("zh-Hant"),
+            HanStrategy::HantHkPreferred => Some("zh-Hant-HK"),
+            HanStrategy::HantTwPreferred => Some("zh-Hant-TW"),
+            HanStrategy::CantonesePreferred => Some("yue"),
+            HanStrategy::ClassicalPreferred => Some("lzh"),
             // No disambiguating markers in the input — surface as the umbrella
             // `zh` tag so the embedded segment is still visible to callers.
             HanStrategy::HanAmbiguous => Some("zh"),
@@ -97,12 +109,20 @@ fn attribute(c: char, ortho: &OrthoSignals, han: HanStrategy) -> Option<&'static
         Script::Latin => {
             if crate::layers::orthography::is_vi_marker_char(c) {
                 Some("vi")
+            } else if crate::layers::orthography::is_fr_marker_char(c) {
+                Some("fr")
             } else if c.is_ascii_alphabetic() {
-                Some("en")
+                if ortho.fr_markers > 0 && ortho.vi_markers == 0 {
+                    Some("fr")
+                } else {
+                    Some("en")
+                }
             } else if ortho.vi_markers > 0 {
                 // Latin char inside a VI-rich region: bias to VI so a single
                 // VI segment doesn't get fragmented around plain Latin letters.
                 Some("vi")
+            } else if ortho.fr_markers > 0 {
+                Some("fr")
             } else {
                 Some("en")
             }

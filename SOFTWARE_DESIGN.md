@@ -19,7 +19,7 @@ The library is designed to be robust on real-world text such as dictionary looku
 ## 2. Goals
 
 - Accept word, phrase, and multi-line paragraph (`string[]`) inputs.
-- Identify language(s) using BCP 47 language tags (`en`, `vi`, `ja`, `ko`, `zh`, `zh-Hans`, `zh-Hant`). Locale subtags (`en-US`, `vi-VN`, `zh-CN`, …) are deliberately out of scope — see §3.
+- Identify language(s) using BCP 47 language tags (`en`, `fr`, `vi`, `ja`, `ko`, `zh-Hans`, `zh-Hant`, plus the Chinese variants `zh-Hant-HK`, `zh-Hant-TW`, `yue`, `lzh`, `nan`, `hak`, `wuu`). Locale subtags (`en-US`, `vi-VN`, `zh-CN`, …) are deliberately out of scope — see §3. The two HK/TW Hant subtags are the only locale-tagged exceptions.
 - Return a ranked candidate list with per-candidate `confidence`, a `primaryLanguage`, and a `status` of `resolved | ambiguous | mixed | unknown | unsupported`.
 - Disambiguate visually overlapping scripts (e.g. Han characters shared by Japanese and Chinese; Latin script shared by English and Vietnamese) using script signals, orthographic rules, dictionaries, and surrounding context.
 - Surface a `reasons` array that explains the decision so the result is auditable.
@@ -84,18 +84,38 @@ The library accepts either:
 
 ## 6. Supported language codes
 
-BCP 47 tags. The current canonical set is:
+BCP 47 tags. The canonical set is:
 
 ```
 en
+fr           French (10K-entry lexicon + ç/œ/æ markers)
 vi
 ja
 ko
-zh-Hans
-zh-Hant
+zh-Hans      Simplified Chinese (mainland default)
+zh-Hant      Traditional Chinese (generic)
+zh-Hant-HK   Traditional Chinese, Hong Kong vocabulary
+zh-Hant-TW   Traditional Chinese, Taiwan vocabulary
+yue          Cantonese (written, colloquial particle 嘅嚟唔喺啲咁哋)
+lzh          Classical / Literary Chinese (dense 之乎者也)
+nan          Min Nan (Hokkien) — sparse signal
+hak          Hakka — sparse signal
+wuu          Wu (Shanghainese) — sparse signal
 ```
 
-Locale subtags (`en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, `zh-TW`, …) are deliberately deferred to a later milestone; they will be added through the centralized `bcp47` module without changing call sites.
+Locale subtags more generally (`en-US`, `en-GB`, `vi-VN`, `ja-JP`, `zh-CN`, …) are deliberately deferred — `zh-Hant-HK` and `zh-Hant-TW` are the only locale-tagged exceptions, because the HK/TW distinction is a routine ask for downstream apps and is decidable from a small character-level signal. Other locale tags will be added through the centralized `bcp47` module without changing call sites.
+
+### 6.1 Detection precision per variant
+
+The new variant tags are not equally robust. The deterministic Layer 3 / 4 signals available to each:
+
+| Tag | Signal | Precision |
+| --- | --- | --- |
+| `zh-Hans` / `zh-Hant` | Hans-only / Hant-only character sets | high |
+| `zh-Hant-HK` / `zh-Hant-TW` | Region-specific Hant chars (`嘥`/`冚`/`嘜` vs `臺`/`麵`/`裡`) | medium — most HK/TW text reads as plain `zh-Hant` because Standard Written Chinese in those regions is largely identical |
+| `yue` | Cantonese-only particles (`嘅`/`嚟`/`唔`/`喺`/`啲`/`咁`/`哋`/`佢`/`係`/`咗`) | high for colloquial Cantonese, undefined for Mandarin written in Hant chars |
+| `lzh` | Classical function-word density (≥3 of `之乎者也矣焉哉而於以…` over ≥4 Han chars) | medium — works on Analects-style text, may miss compact classical aphorisms |
+| `nan` / `hak` / `wuu` | Sparse diagnostic characters (`阮`, `𠊎`, `儂` …) | low — most Min Nan / Hakka / Wu text is written using Han chars indistinguishable from Mandarin. The tag fires only when one of the diagnostic chars appears |
 
 ---
 

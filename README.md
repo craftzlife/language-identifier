@@ -17,7 +17,7 @@ pipeline spec.
 | 2. Script & Unicode signal | ✅ |
 | 3. Orthographic rules (kana, VI diacritics, Hans/Hant markers) | ✅ |
 | 4. Function words / particles / stopwords | ✅ |
-| 5. Dictionary / lexicon matching (10 K words × 6 langs) | ✅ |
+| 5. Dictionary / lexicon matching (10 K words × 14 tags) | ✅ |
 | 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
 | 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
@@ -25,7 +25,7 @@ pipeline spec.
 | 10. LLM resolver | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
-Supported languages: `en`, `ja`, `zh-Hans`, `zh-Hant`, `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `vi`, `ko`.
+Supported languages: `en`, `fr`, `vi`, `ja`, `zh-Hans`, `zh-Hant`, `zh-Hant-HK`, `zh-Hant-TW`, `yue` (Cantonese), `lzh` (Classical Chinese), `nan` (Min Nan), `hak` (Hakka), `wuu` (Wu), `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `ko`. See [SDD §6.1](./SOFTWARE_DESIGN.md#61-detection-precision-per-variant) for per-variant precision.
 
 ## Build
 
@@ -283,7 +283,7 @@ See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for field s
 │   │   │   ├── segments.rs                 # span computation
 │   │   │   ├── data/
 │   │   │   │   ├── SOURCES.md              # lexicon provenance and license
-│   │   │   │   └── lexicon_{en,ja,zh_hans,zh_hant,vi,ko}.txt  # 10 K words each
+│   │   │   │   └── lexicon_{en,fr,ja,ko,vi,zh_hans,zh_hant,zh_hant_hk,zh_hant_tw,yue,lzh,nan,hak,wuu}.txt  # 10 K words each
 │   │   │   └── layers/
 │   │   │       ├── normalize.rs            # Layer 0
 │   │   │       ├── ngram.rs                # Layer 1

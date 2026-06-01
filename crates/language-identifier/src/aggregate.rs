@@ -132,6 +132,7 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
             // its char count to the corresponding language's share. The
             // unattributed remainder falls back to v2's vi-density / ngram logic.
             let mut en_chars = 0usize;
+            let mut fr_chars = 0usize;
             let mut vi_chars = 0usize;
             let mut attributed_chars = 0usize;
             for a in attr {
@@ -139,6 +140,7 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
                 attributed_chars += len;
                 match a.language {
                     "en" => en_chars += len,
+                    "fr" => fr_chars += len,
                     "vi" => vi_chars += len,
                     _ => {}
                 }
@@ -146,6 +148,9 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
             let remainder = latin_count.saturating_sub(attributed_chars);
             if en_chars > 0 {
                 add(w, "en", en_chars as f32 / total);
+            }
+            if fr_chars > 0 {
+                add(w, "fr", fr_chars as f32 / total);
             }
             if vi_chars > 0 {
                 add(w, "vi", vi_chars as f32 / total);
@@ -159,19 +164,33 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
                     && (input.ortho.vi_markers as f32 / latin_count as f32) >= 0.10
                 {
                     add(w, "vi", rem_w);
+                } else if input.ortho.fr_markers >= 1 && fr_chars > 0 {
+                    // FR context — let remainder follow the dominant FR
+                    // attribution rather than defaulting to EN.
+                    add(w, "fr", rem_w);
                 } else {
                     add(w, "en", rem_w);
                 }
             }
         } else {
-            // No Layer 6 attribution — v2 path.
+            // No Layer 6 attribution — v2 path with fr-marker tier added.
             let vi_density = input.ortho.vi_markers as f32 / latin_count as f32;
+            let fr_density = input.ortho.fr_markers as f32 / latin_count as f32;
             if vi_density >= 0.10 {
                 add(w, "vi", latin_w);
+            } else if fr_density >= 0.05 {
+                // FR markers (ç, œ, æ) are rarer than VI tone marks, so
+                // a lower density still warrants attributing the Latin
+                // mass to fr.
+                add(w, "fr", latin_w);
             } else if input.ortho.vi_markers >= 1 {
                 let vi_share = (input.ortho.vi_markers as f32 / total).min(latin_w);
                 add(w, "vi", vi_share);
                 add(w, "en", latin_w - vi_share);
+            } else if input.ortho.fr_markers >= 1 {
+                let fr_share = (input.ortho.fr_markers as f32 / total).min(latin_w);
+                add(w, "fr", fr_share);
+                add(w, "en", latin_w - fr_share);
             } else if input.ngram.vi_hits > input.ngram.en_hits * 3 {
                 add(w, "vi", latin_w);
             } else {
@@ -182,41 +201,106 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
 
     if kana_w > 0.0 {
         add(w, "ja", kana_w);
-        if han_w > 0.0 {
-            let kana_count = input.counts.kana() as f32;
-            let hans_m = input.ortho.hans_markers as f32;
-            let hant_m = input.ortho.hant_markers as f32;
-            let proof = kana_count + hans_m + hant_m;
-            if proof > 0.0 && (hans_m > 0.0 || hant_m > 0.0) {
-                // Split Han proportionally to "proof" — kana count argues for
-                // ja, marker count argues for zh-{Hans,Hant}. Prevents a small
-                // kana presence from claiming all kanji when Chinese-only
-                // markers are actually the stronger signal.
-                add(w, "ja", han_w * (kana_count / proof));
-                if hans_m > 0.0 {
-                    add(w, "zh-Hans", han_w * (hans_m / proof));
-                }
-                if hant_m > 0.0 {
-                    add(w, "zh-Hant", han_w * (hant_m / proof));
-                }
-            } else {
-                add(w, "ja", han_w);
-            }
-        }
-    } else if han_w > 0.0 {
-        if input.ortho.hans_markers > 0 && input.ortho.hant_markers == 0 {
-            add(w, "zh-Hans", han_w);
-        } else if input.ortho.hant_markers > 0 && input.ortho.hans_markers == 0 {
-            add(w, "zh-Hant", han_w);
-        } else {
-            // No kana, no markers — dictionary signals (Layer 5) will tip the
-            // balance. Distribute Han evenly across the three possibilities to
-            // surface them all as candidates.
-            add(w, "ja", han_w * 0.34);
-            add(w, "zh-Hans", han_w * 0.33);
-            add(w, "zh-Hant", han_w * 0.33);
+    }
+    if han_w > 0.0 {
+        for (lang, share) in split_han_mass(han_w, input.counts.kana(), input.counts.han, input.ortho) {
+            add(w, lang, share);
         }
     }
+}
+
+// Pick the most specific Hant tag warranted by HK/TW markers. Used by
+// both the kana-with-Chinese-markers branch and the no-kana branch.
+fn pick_hant_tag(ortho: &OrthoSignals) -> &'static str {
+    let hk = ortho.hant_hk_markers > 0;
+    let tw = ortho.hant_tw_markers > 0;
+    if hk && !tw {
+        "zh-Hant-HK"
+    } else if tw && !hk {
+        "zh-Hant-TW"
+    } else {
+        "zh-Hant"
+    }
+}
+
+// Classical Chinese gating — mirrors `orthography::is_classical_chinese`
+// (kept inline here to avoid threading the normalized text through
+// AggregateInput just for one bool).
+fn is_lzh_active(ortho: &OrthoSignals, han_count: usize) -> bool {
+    ortho.lzh_markers >= 3 && han_count >= 4
+}
+
+// Distribute Han-char mass across the candidate languages that can
+// carry Han script. Returns (lang, share) pairs whose shares sum to
+// `han_w`.
+//
+// Priority order:
+//   1. Classical density (`lzh_active`) → all Han to `lzh`.
+//   2. Cantonese particles (`yue_markers > 0`) → all Han to `yue`.
+//      Written Cantonese uses Hant-style chars but the language is yue,
+//      so the particle signal claims the script for yue rather than
+//      splitting it across zh-Hant.
+//   3. Otherwise: proportional split across ja / zh-Hans /
+//      zh-Hant{,-HK,-TW} / nan / hak / wuu weighted by their respective
+//      marker counts (or by kana count for ja).
+//   4. When no marker fires at all, fall back to the v2 even three-way
+//      split between ja and the two zh variants so dictionary / context
+//      signals can tip the balance.
+fn split_han_mass(
+    han_w: f32,
+    kana_count: usize,
+    han_count: usize,
+    ortho: &OrthoSignals,
+) -> Vec<(&'static str, f32)> {
+    if is_lzh_active(ortho, han_count) {
+        return vec![("lzh", han_w)];
+    }
+    if ortho.yue_markers > 0 {
+        return vec![("yue", han_w)];
+    }
+
+    let hant_tag = pick_hant_tag(ortho);
+    let kana = kana_count as f32;
+    let hans_m = ortho.hans_markers as f32;
+    let hant_m = ortho.hant_markers as f32;
+    let nan_m = ortho.nan_markers as f32;
+    let hak_m = ortho.hak_markers as f32;
+    let wuu_m = ortho.wuu_markers as f32;
+
+    let proof = kana + hans_m + hant_m + nan_m + hak_m + wuu_m;
+    let mut out: Vec<(&'static str, f32)> = Vec::new();
+    if proof > 0.0 {
+        if kana > 0.0 {
+            out.push(("ja", han_w * (kana / proof)));
+        }
+        if hans_m > 0.0 {
+            out.push(("zh-Hans", han_w * (hans_m / proof)));
+        }
+        if hant_m > 0.0 {
+            out.push((hant_tag, han_w * (hant_m / proof)));
+        }
+        if nan_m > 0.0 {
+            out.push(("nan", han_w * (nan_m / proof)));
+        }
+        if hak_m > 0.0 {
+            out.push(("hak", han_w * (hak_m / proof)));
+        }
+        if wuu_m > 0.0 {
+            out.push(("wuu", han_w * (wuu_m / proof)));
+        }
+        return out;
+    }
+
+    // No kana, no markers — dictionary signals (Layer 5) will tip the
+    // balance. Distribute Han evenly across the three classic candidates.
+    if kana > 0.0 {
+        out.push(("ja", han_w));
+    } else {
+        out.push(("ja", han_w * 0.34));
+        out.push(("zh-Hans", han_w * 0.33));
+        out.push((hant_tag, han_w * 0.33));
+    }
+    out
 }
 
 fn round2(x: f32) -> f32 {

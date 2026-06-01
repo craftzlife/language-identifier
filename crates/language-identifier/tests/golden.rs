@@ -295,8 +295,12 @@ fn korean_with_english_embedded() {
 #[test]
 fn french_diacritics_do_not_trigger_vietnamese() {
     // é à ç are Latin-1 Supplement, used widely beyond Vietnamese.
+    // Now that `fr` is a supported language, the input resolves to fr
+    // (via fr-only `ç` + lexicon hits); the test guards specifically
+    // against a vi misclassification, which is the original concern.
     let r = identify("café résumé naïve façade");
-    assert_eq!(top_lang(&r), "en", "{r:?}");
+    assert_ne!(top_lang(&r), "vi", "must not misattribute to vi: {r:?}");
+    assert!(matches!(top_lang(&r), "fr" | "en"), "{r:?}");
 }
 
 #[test]
@@ -376,11 +380,11 @@ fn korean_resolves() {
 
 #[test]
 fn input_with_nfc_decomposed_form() {
-    // "café" with combining acute: should be NFC-composed and resolved (not
-    // unknown / unsupported). The exact language depends on lexicon overlap
-    // — "café" happens to be in the VI lexicon as a loanword.
+    // "café" with combining acute: should be NFC-composed and resolved
+    // (not unknown / unsupported). The exact language depends on lexicon
+    // overlap — café is in both the EN (loanword) and FR lexicons.
     let r = identify("cafe\u{0301}");
-    assert!(matches!(top_lang(&r), "en" | "vi"), "{r:?}");
+    assert!(matches!(top_lang(&r), "en" | "fr" | "vi"), "{r:?}");
     assert_ne!(r.status, language_identifier::Status::Unknown);
 }
 

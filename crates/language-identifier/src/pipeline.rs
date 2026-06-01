@@ -75,6 +75,12 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
             ortho.vi_markers
         ));
     }
+    if ortho.fr_markers > 0 {
+        notes.push(format!(
+            "French-only letter markers detected: {}",
+            ortho.fr_markers
+        ));
+    }
     if ortho.hans_markers > 0 {
         notes.push(format!(
             "Simplified-Chinese-only markers detected: {}",
@@ -86,6 +92,39 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
             "Traditional-Chinese-only markers detected: {}",
             ortho.hant_markers
         ));
+    }
+    if ortho.yue_markers > 0 {
+        notes.push(format!(
+            "Cantonese (yue) particles detected: {}",
+            ortho.yue_markers
+        ));
+    }
+    if ortho.lzh_markers > 0 && counts.han >= 4 {
+        notes.push(format!(
+            "Classical Chinese (lzh) function-word density: {} hits over {} Han chars",
+            ortho.lzh_markers, counts.han
+        ));
+    }
+    if ortho.hant_hk_markers > 0 {
+        notes.push(format!(
+            "Hong Kong written-Chinese markers detected: {}",
+            ortho.hant_hk_markers
+        ));
+    }
+    if ortho.hant_tw_markers > 0 {
+        notes.push(format!(
+            "Taiwan written-Chinese markers detected: {}",
+            ortho.hant_tw_markers
+        ));
+    }
+    if ortho.nan_markers > 0 {
+        notes.push(format!("Min Nan (nan) markers detected: {}", ortho.nan_markers));
+    }
+    if ortho.hak_markers > 0 {
+        notes.push(format!("Hakka (hak) markers detected: {}", ortho.hak_markers));
+    }
+    if ortho.wuu_markers > 0 {
+        notes.push(format!("Wu (wuu) markers detected: {}", ortho.wuu_markers));
     }
     if counts.kana() > 0 {
         let kana = counts.kana();
@@ -203,6 +242,29 @@ fn pick_han_strategy(
     let kana = counts.kana();
     let hans_m = ortho.hans_markers;
     let hant_m = ortho.hant_markers;
+    let hk_m = ortho.hant_hk_markers;
+    let tw_m = ortho.hant_tw_markers;
+
+    // Classical density wins outright when present — Classical Chinese
+    // is a coherent register that owns its Han chars.
+    if ortho.lzh_markers >= 3 && counts.han >= 4 {
+        return HanStrategy::ClassicalPreferred;
+    }
+    // Cantonese particles claim the Han script regardless of kana — yue
+    // text uses Hant-style chars but the language is yue.
+    if ortho.yue_markers > 0 {
+        return HanStrategy::CantonesePreferred;
+    }
+
+    // Pick the most specific Hant flavor available once we know we're
+    // in a Hant-leaning branch.
+    let hant_flavor = if hk_m > 0 && tw_m == 0 {
+        HanStrategy::HantHkPreferred
+    } else if tw_m > 0 && hk_m == 0 {
+        HanStrategy::HantTwPreferred
+    } else {
+        HanStrategy::HantPreferred
+    };
 
     // Chinese-only markers can outweigh kana when they are the stronger
     // per-character signal — Chinese-dominant text with a small kana
@@ -211,7 +273,7 @@ fn pick_han_strategy(
         return HanStrategy::HansPreferred;
     }
     if hant_m > kana && hans_m == 0 {
-        return HanStrategy::HantPreferred;
+        return hant_flavor;
     }
     if kana > 0 {
         return HanStrategy::JapaneseClaimsHan;
@@ -220,7 +282,7 @@ fn pick_han_strategy(
         return HanStrategy::HansPreferred;
     }
     if hant_m > 0 && hans_m == 0 {
-        return HanStrategy::HantPreferred;
+        return hant_flavor;
     }
     HanStrategy::HanAmbiguous
 }

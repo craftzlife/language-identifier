@@ -5,13 +5,36 @@ use super::normalize::Normalized;
 use super::script::{classify, Script};
 
 const LEXICON_EN: &str = include_str!("../data/lexicon_en.txt");
+const LEXICON_FR: &str = include_str!("../data/lexicon_fr.txt");
 const LEXICON_JA: &str = include_str!("../data/lexicon_ja.txt");
 const LEXICON_ZH_HANS: &str = include_str!("../data/lexicon_zh_hans.txt");
 const LEXICON_ZH_HANT: &str = include_str!("../data/lexicon_zh_hant.txt");
+const LEXICON_ZH_HANT_HK: &str = include_str!("../data/lexicon_zh_hant_hk.txt");
+const LEXICON_ZH_HANT_TW: &str = include_str!("../data/lexicon_zh_hant_tw.txt");
+const LEXICON_YUE: &str = include_str!("../data/lexicon_yue.txt");
+const LEXICON_LZH: &str = include_str!("../data/lexicon_lzh.txt");
+const LEXICON_NAN: &str = include_str!("../data/lexicon_nan.txt");
+const LEXICON_HAK: &str = include_str!("../data/lexicon_hak.txt");
+const LEXICON_WUU: &str = include_str!("../data/lexicon_wuu.txt");
 const LEXICON_VI: &str = include_str!("../data/lexicon_vi.txt");
 const LEXICON_KO: &str = include_str!("../data/lexicon_ko.txt");
 
-pub const LANGUAGES: &[&str] = &["en", "ja", "zh-Hans", "zh-Hant", "vi", "ko"];
+pub const LANGUAGES: &[&str] = &[
+    "en",
+    "fr",
+    "ja",
+    "zh-Hans",
+    "zh-Hant",
+    "zh-Hant-HK",
+    "zh-Hant-TW",
+    "yue",
+    "lzh",
+    "nan",
+    "hak",
+    "wuu",
+    "vi",
+    "ko",
+];
 
 /// Exposed for the function-words layer, which derives its tables from the
 /// top N entries of each lexicon at load time.
@@ -22,9 +45,17 @@ pub fn raw_lexicon_for_function_words(lang: &str) -> &'static str {
 fn raw_for(lang: &str) -> &'static str {
     match lang {
         "en" => LEXICON_EN,
+        "fr" => LEXICON_FR,
         "ja" => LEXICON_JA,
         "zh-Hans" => LEXICON_ZH_HANS,
         "zh-Hant" => LEXICON_ZH_HANT,
+        "zh-Hant-HK" => LEXICON_ZH_HANT_HK,
+        "zh-Hant-TW" => LEXICON_ZH_HANT_TW,
+        "yue" => LEXICON_YUE,
+        "lzh" => LEXICON_LZH,
+        "nan" => LEXICON_NAN,
+        "hak" => LEXICON_HAK,
+        "wuu" => LEXICON_WUU,
         "vi" => LEXICON_VI,
         "ko" => LEXICON_KO,
         _ => "",
@@ -39,18 +70,34 @@ pub fn contains(lang: &str, token: &str) -> bool {
 
 fn lexicon(lang: &str) -> &'static HashSet<&'static str> {
     static EN: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static FR: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static JA: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static ZH_HANS: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static ZH_HANT: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static ZH_HANT_HK: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static ZH_HANT_TW: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static YUE: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static LZH: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static NAN: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static HAK: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    static WUU: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static VI: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static KO: OnceLock<HashSet<&'static str>> = OnceLock::new();
     static EMPTY: OnceLock<HashSet<&'static str>> = OnceLock::new();
 
     let cell = match lang {
         "en" => &EN,
+        "fr" => &FR,
         "ja" => &JA,
         "zh-Hans" => &ZH_HANS,
         "zh-Hant" => &ZH_HANT,
+        "zh-Hant-HK" => &ZH_HANT_HK,
+        "zh-Hant-TW" => &ZH_HANT_TW,
+        "yue" => &YUE,
+        "lzh" => &LZH,
+        "nan" => &NAN,
+        "hak" => &HAK,
+        "wuu" => &WUU,
         "vi" => &VI,
         "ko" => &KO,
         _ => &EMPTY,
@@ -91,7 +138,7 @@ pub fn score(input: &Normalized) -> DictionarySignal {
         let mut langs: Vec<&'static str> = Vec::new();
         for &lang in LANGUAGES {
             let lex = lexicon(lang);
-            let probe: &str = if lang == "en" || lang == "vi" {
+            let probe: &str = if lang == "en" || lang == "fr" || lang == "vi" {
                 lower.as_str()
             } else {
                 tok.as_str()
@@ -215,5 +262,33 @@ mod tests {
                 lex.len()
             );
         }
+    }
+
+    #[test]
+    fn variant_lexicons_are_present_and_distinct() {
+        // Each Chinese-family variant gets its own bundled 10K lexicon
+        // — exercise the wire-up beyond a generic LANGUAGES iteration.
+        for tag in [
+            "yue",
+            "lzh",
+            "nan",
+            "hak",
+            "wuu",
+            "zh-Hant-HK",
+            "zh-Hant-TW",
+        ] {
+            assert!(
+                lexicon(tag).len() >= 9_000,
+                "{tag} lexicon missing or too small: {}",
+                lexicon(tag).len()
+            );
+        }
+        // zh-Hant-HK and zh-Hant-TW should differ in at least one entry
+        // (s2hk vs s2twp OpenCC conversions diverge on Taiwan-specific
+        // vocabulary). If both sets are identical the wire-up swapped
+        // file paths.
+        let hk = lexicon("zh-Hant-HK");
+        let tw = lexicon("zh-Hant-TW");
+        assert_ne!(hk, tw, "zh-Hant-HK and zh-Hant-TW lexicons must differ");
     }
 }

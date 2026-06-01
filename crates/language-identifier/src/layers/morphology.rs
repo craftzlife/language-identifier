@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use super::dictionary;
+use super::function_words;
 use super::normalize::Normalized;
-use super::orthography::is_vi_marker_char;
+use super::orthography::{is_fr_marker_char, is_vi_marker_char};
 use super::script::{classify, Script};
 
 /// Per-token attribution of a Latin word to a language.
@@ -67,15 +68,46 @@ fn attribute_one(token: &str) -> Option<&'static str> {
         return Some("vi");
     }
 
+    // Rule 2: French-only cedilla / ligature ⇒ fr, full stop. `ç`, `œ`,
+    // `æ` essentially don't appear in EN or VI orthography.
+    if token.chars().any(is_fr_marker_char) {
+        return Some("fr");
+    }
+
     let lower = token.to_lowercase();
     let in_en = dictionary::contains("en", &lower);
+    let in_fr = dictionary::contains("fr", &lower);
     let in_vi = dictionary::contains("vi", &lower);
 
-    match (in_en, in_vi) {
-        (true, false) => Some("en"),
-        (false, true) => Some("vi"),
-        (true, true) => Some(disambiguate_by_shape(&lower)),
-        (false, false) => None,
+    match (in_en, in_fr, in_vi) {
+        (true, false, false) => Some("en"),
+        (false, true, false) => Some("fr"),
+        (false, false, true) => Some("vi"),
+        (true, false, true) => Some(disambiguate_by_shape(&lower)),
+        // EN + FR overlap (typically loanwords or short function words
+        // like "le", "la", "chat"). Tip toward fr when the token is a
+        // top fr function word and not a top en function word — a much
+        // stronger language signal than generic 10K-lexicon membership.
+        (true, true, false) => Some(disambiguate_en_fr(&lower)),
+        // FR + VI overlap with no VI marker present — prefer fr.
+        (false, true, true) => Some("fr"),
+        // All three lexicons claim the token — apply the fr-vs-en
+        // function-word tiebreaker first, then fall through to the
+        // historical en/vi shape rule when neither side wins.
+        (true, true, true) => Some(disambiguate_en_fr(&lower)),
+        (false, false, false) => None,
+    }
+}
+
+fn disambiguate_en_fr(token: &str) -> &'static str {
+    let is_fr_fw = function_words::is_top_function_word("fr", token);
+    let is_en_fw = function_words::is_top_function_word("en", token);
+    match (is_fr_fw, is_en_fw) {
+        (true, false) => "fr",
+        (false, true) => "en",
+        // Both or neither — default to en (matches historical fallback
+        // for ambiguous tokens; non-FW overlaps are usually loanwords).
+        _ => "en",
     }
 }
 
@@ -173,12 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_la_falls_to_en() {
-        // "la" is in both EN and VI lexicons (LA = Los Angeles abbrev, etc.)
+    fn ambiguous_la_attributes_to_fr() {
+        // "la" is in EN (LA = Los Angeles), FR (definite article), and
+        // VI lexicons. The fr-vs-en function-word tiebreaker prefers fr
+        // because "la" is a top fr function word but not a top en one.
         let n = normalize("la");
         let s = score(&n);
         if !s.latin_attribution.is_empty() {
-            assert_eq!(s.latin_attribution[0].language, "en");
+            assert_eq!(s.latin_attribution[0].language, "fr");
         }
     }
 
