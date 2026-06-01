@@ -92,11 +92,16 @@ pub fn aggregate(input: AggregateInput<'_>) -> Vec<Candidate> {
         }
     }
 
+    // aggregate() emits fine-grained candidates (`zh-Hant`, `yue`, …).
+    // The macro grouping happens in `pipeline::run_with` after this
+    // step, so leave `variants` empty here — it gets populated when
+    // candidates are collapsed to their macro language.
     let mut candidates: Vec<Candidate> = w
         .into_iter()
         .filter(|(_, c)| *c > 0.0)
         .map(|(language, confidence)| Candidate {
             language,
+            variants: Vec::new(),
             confidence: round2(confidence),
         })
         .collect();
@@ -292,13 +297,17 @@ fn split_han_mass(
     }
 
     // No kana, no markers — dictionary signals (Layer 5) will tip the
-    // balance. Distribute Han evenly across the three classic candidates.
+    // balance. The default split is balanced at the **macro** level
+    // (ja 0.50 vs zh 0.50 = 0.25 Hans + 0.25 Hant) so that a single
+    // shared kanji like `学` lands as Ambiguous after macro grouping
+    // rather than auto-resolving to zh just because zh has more fine
+    // variants to sum across.
     if kana > 0.0 {
         out.push(("ja", han_w));
     } else {
-        out.push(("ja", han_w * 0.34));
-        out.push(("zh-Hans", han_w * 0.33));
-        out.push((hant_tag, han_w * 0.33));
+        out.push(("ja", han_w * 0.50));
+        out.push(("zh-Hans", han_w * 0.25));
+        out.push((hant_tag, han_w * 0.25));
     }
     out
 }

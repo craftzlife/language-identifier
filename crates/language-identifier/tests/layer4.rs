@@ -27,8 +27,9 @@ fn japanese_particles_strengthen_ja_signal() {
 fn chinese_particles_strengthen_zh_signal() {
     // 的 是 在 了 — top-frequency zh particles.
     let r = identify("的是在了");
+    assert_eq!(r.primary_language.as_deref(), Some("zh"));
     assert!(matches!(
-        r.primary_language.as_deref(),
+        r.primary_variant.as_deref(),
         Some("zh-Hans") | Some("zh-Hant")
     ));
 }

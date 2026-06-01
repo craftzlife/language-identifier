@@ -42,10 +42,7 @@ fn ml_classifier_influences_candidate_ordering() {
     let input = "学";
     let baseline = identify(input);
     assert!(
-        matches!(
-            baseline.primary_language.as_deref(),
-            Some("ja") | Some("zh-Hans") | Some("zh-Hant")
-        ),
+        matches!(baseline.primary_language.as_deref(), Some("ja") | Some("zh")),
         "unexpected baseline primary: {:?}",
         baseline.primary_language
     );
@@ -57,9 +54,15 @@ fn ml_classifier_influences_candidate_ordering() {
     let with_ml = identify_with(input, &opts);
     assert_eq!(
         with_ml.primary_language.as_deref(),
-        Some("zh-Hans"),
-        "ML bonus failed to make zh-Hans primary: {:?}",
+        Some("zh"),
+        "ML bonus failed to make zh-Hans push zh to primary: {:?}",
         with_ml.candidates
+    );
+    assert_eq!(
+        with_ml.primary_variant.as_deref(),
+        Some("zh-Hans"),
+        "ML bonus failed to surface zh-Hans as primary variant: {:?}",
+        with_ml
     );
     assert!(
         with_ml

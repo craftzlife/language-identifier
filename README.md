@@ -252,19 +252,28 @@ prerequisites (rustup targets, Android NDK, MinGW, `cross`, …).
 ```jsonc
 {
   "candidates": [
-    { "language": "<BCP 47 tag>", "confidence": 0.0 }
+    {
+      "language": "<macro BCP 47 tag>",         // zh, en, fr, vi, ja, ko
+      "variants": ["<fine BCP 47 tag>", ...],   // fine tags the library can decide under this macro
+      "confidence": 0.0
+    }
   ],
-  "primaryLanguage": "<BCP 47 tag>",          // omitted when status is "unknown" / "unsupported"
+  "primaryLanguage": "<macro BCP 47 tag>",      // omitted when status is "unknown" / "unsupported"
+  "primaryVariant": "<fine BCP 47 tag>",        // top fine tag inside the primary macro; same as primaryLanguage for en/fr/vi/ja/ko
   "status": "resolved | ambiguous | mixed | unknown | unsupported",
   "reasons": ["...", "..."],                    // array of explanation lines (always an array)
-  "segments": [                                 // always present; `[]` only when status is unknown/unsupported
-    { "language": "<BCP 47 tag>", "start": 0, "end": 0, "text": "..." }
+  "segments": [                                 // fine-grained tags so apps can annotate per-segment
+    { "language": "<fine BCP 47 tag>", "start": 0, "end": 0, "text": "..." }
   ],
-  "normalizedText": "..."                        // the analyzed form (NFC, whitespace-collapsed)
+  "normalizedText": "..."                       // the analyzed form (NFC, whitespace-collapsed)
 }
 ```
 
-See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for field semantics and status definitions.
+`candidates` is macro-grouped for consumer apps (a single `zh` entry
+covers `zh-Hans`/`zh-Hant`/`yue`/`lzh`/`nan`/`hak`/`wuu`/…). The fine
+distinction is available via `primaryVariant` and `segments[*].language`.
+See [`SOFTWARE_DESIGN.md` §5](./SOFTWARE_DESIGN.md#5-output-schema) for
+the full field semantics, macro grouping table, and status definitions.
 
 ## Repository layout
 

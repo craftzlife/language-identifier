@@ -7,6 +7,10 @@ fn top_lang(r: &language_identifier::IdentifyResult) -> &str {
         .unwrap_or("")
 }
 
+fn primary_variant(r: &language_identifier::IdentifyResult) -> &str {
+    r.primary_variant.as_deref().unwrap_or("")
+}
+
 fn has_lang(r: &language_identifier::IdentifyResult, lang: &str) -> bool {
     r.candidates.iter().any(|c| c.language == lang)
 }
@@ -23,19 +27,18 @@ fn w2_english_latin_word() {
 #[test]
 fn w1_ambiguous_han_word() {
     // 先生|教師|先生|老师 — Han-only with mixed Simplified+Traditional markers.
-    // The SDD expects ambiguous ja/zh. v2 surfaces both ja and a zh-* variant
-    // as candidates via Layer 5 dictionary overlap (the diagram's expected
-    // behavior), but the presence of 老师 (Hans-exclusive) tilts the deterministic
-    // calibration toward zh-Hans. Assert top is in the ja/zh family AND a second
-    // candidate from the other family is present.
+    // After macro grouping, both top-level candidates are macro tags
+    // (`ja` and `zh`); the fine-grained zh-Hans / zh-Hant detail is
+    // exposed via `primary_variant`.
     let r = identify("先生 教師 先生 老师");
     assert!(
-        matches!(top_lang(&r), "ja" | "zh-Hans" | "zh-Hant"),
-        "W1 top should be ja/zh-family, got: {r:?}"
+        matches!(top_lang(&r), "ja" | "zh"),
+        "W1 top should be ja or zh macro, got: {r:?}"
     );
-    let has_ja = has_lang(&r, "ja");
-    let has_zh = has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant");
-    assert!(has_ja && has_zh, "W1 should expose both ja and zh: {r:?}");
+    assert!(
+        has_lang(&r, "ja") && has_lang(&r, "zh"),
+        "W1 should expose both ja and zh macros: {r:?}"
+    );
 }
 
 // --- Single language, phrase examples ---
@@ -51,7 +54,8 @@ fn p1_japanese_phrases() {
 fn p2_simplified_chinese_phrases() {
     let r = identify("大学老师 中文老师 高中老师 教英语的老师 受人尊敬的教授");
     assert_eq!(r.status, Status::Resolved, "P2: {r:?}");
-    assert_eq!(top_lang(&r), "zh-Hans");
+    assert_eq!(top_lang(&r), "zh");
+    assert_eq!(primary_variant(&r), "zh-Hans");
 }
 
 #[test]
@@ -93,7 +97,8 @@ fn g2_simplified_chinese_paragraph() {
         "老师很有耐心，也会认真回答学生的问题。",
     ]);
     assert_eq!(r.status, Status::Resolved, "G2: {r:?}");
-    assert_eq!(top_lang(&r), "zh-Hans");
+    assert_eq!(top_lang(&r), "zh");
+    assert_eq!(primary_variant(&r), "zh-Hans");
 }
 
 #[test]
@@ -161,10 +166,7 @@ fn m3_japanese_carrier_with_chinese_examples() {
     ]);
     assert_eq!(r.status, Status::Ambiguous, "M3 status: {r:?}");
     assert_eq!(r.primary_language.as_deref(), Some("ja"));
-    assert!(
-        has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant"),
-        "M3 must surface a zh-* candidate: {r:?}"
-    );
+    assert!(has_lang(&r, "zh"), "M3 must surface zh macro: {r:?}");
 }
 
 #[test]
@@ -176,7 +178,7 @@ fn m4_four_language_meta_discussion() {
     ]);
     assert_eq!(top_lang(&r), "en", "M4: {r:?}");
     // Tightened: SDD expects all four embedded language families to appear as candidates.
-    let embedded_count = ["vi", "ja", "zh-Hans"]
+    let embedded_count = ["vi", "ja", "zh"]
         .iter()
         .filter(|l| has_lang(&r, l))
         .count();
@@ -223,7 +225,7 @@ fn m7_vi_carrier_with_simplified_chinese_embedded() {
         "Ứng dụng nên xử lý tốt những câu như Tôi đang đọc một ví dụ tiếng Trung: 这位老师很有耐心, trong đó phần đầu là tiếng Việt còn phần sau là tiếng Trung.",
     ]);
     assert_eq!(top_lang(&r), "vi", "M7: {r:?}");
-    assert!(has_lang(&r, "zh-Hans"), "M7 should expose zh-Hans: {r:?}");
+    assert!(has_lang(&r, "zh"), "M7 should expose zh: {r:?}");
 }
 
 // --- Script-specific single-language inputs ---
@@ -232,7 +234,8 @@ fn m7_vi_carrier_with_simplified_chinese_embedded() {
 fn traditional_chinese_phrase() {
     // Strong Traditional markers, no kana.
     let r = identify("學校的國文老師會說中文");
-    assert_eq!(top_lang(&r), "zh-Hant", "{r:?}");
+    assert_eq!(top_lang(&r), "zh", "{r:?}");
+    assert_eq!(primary_variant(&r), "zh-Hant", "{r:?}");
     assert_eq!(r.status, Status::Resolved);
 }
 

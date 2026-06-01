@@ -132,6 +132,66 @@ fn strip_label_prefix(s: &str) -> &str {
     s.strip_prefix("__label__").unwrap_or(s)
 }
 
+/// Map a fine-grained BCP 47 tag to its consumer-facing macro language.
+///
+/// The library's internal pipeline tracks fine variants (`zh-Hant-HK`,
+/// `yue`, `lzh`, …) so apps that care about the distinction can drill
+/// down. For dictionary / language-learning UIs that only need the
+/// big-picture language, [`macro_of`] collapses the variants into the
+/// macro tag that gets returned in [`crate::IdentifyResult::candidates`].
+///
+/// Mapping:
+/// - All Sinitic variants — `zh`, `zh-Hans`, `zh-Hant`, `zh-Hant-HK`,
+///   `zh-Hant-TW`, `yue` (Cantonese), `lzh` (Classical),
+///   `nan` (Min Nan), `hak` (Hakka), `wuu` (Wu) — collapse to `zh`.
+///   This is a deliberate UX call: `yue`/`lzh`/`nan`/`hak`/`wuu` are
+///   technically separate ISO 639-3 languages, but for dictionary-app
+///   consumers they're surfaced under the `zh` macro alongside
+///   Hans/Hant. The fine-grained tag is still available on
+///   [`crate::IdentifyResult::primary_variant`] and
+///   [`crate::Candidate::variants`].
+/// - Every other supported tag (`en`, `fr`, `vi`, `ja`, `ko`) is its
+///   own macro.
+/// - Unknown tags pass through unchanged.
+pub fn macro_of(tag: &str) -> &str {
+    match tag {
+        "zh" | "zh-Hans" | "zh-Hant" | "zh-Hant-HK" | "zh-Hant-TW" | "yue" | "lzh" | "nan"
+        | "hak" | "wuu" => "zh",
+        other => other,
+    }
+}
+
+/// The canonical fine-grained tags the library knows how to emit under
+/// a given macro language. Used to populate
+/// [`crate::Candidate::variants`] so consumers can see *which* fine
+/// tags a macro group represents — even before they show up in any
+/// specific input.
+///
+/// Adding a new variant means extending this list in lock-step with
+/// the detection wiring (e.g. a new arm in
+/// [`crate::layers::orthography`]).
+pub fn variants_of(macro_tag: &str) -> &'static [&'static str] {
+    match macro_tag {
+        "zh" => &[
+            "zh-Hans",
+            "zh-Hant",
+            "zh-Hant-HK",
+            "zh-Hant-TW",
+            "yue",
+            "lzh",
+            "nan",
+            "hak",
+            "wuu",
+        ],
+        "en" => &["en"],
+        "fr" => &["fr"],
+        "vi" => &["vi"],
+        "ja" => &["ja"],
+        "ko" => &["ko"],
+        _ => &[],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,6 +286,84 @@ mod tests {
     fn is_supported_rejects_unsupported_codes() {
         for code in ["de", "es", "it", "ru", ""] {
             assert!(!is_supported_iso639(code), "expected {code} unsupported");
+        }
+    }
+
+    #[test]
+    fn macro_of_collapses_sinitic_variants_to_zh() {
+        for fine in [
+            "zh",
+            "zh-Hans",
+            "zh-Hant",
+            "zh-Hant-HK",
+            "zh-Hant-TW",
+            "yue",
+            "lzh",
+            "nan",
+            "hak",
+            "wuu",
+        ] {
+            assert_eq!(macro_of(fine), "zh", "{fine} should collapse to zh");
+        }
+    }
+
+    #[test]
+    fn macro_of_is_identity_for_other_supported_tags() {
+        for tag in ["en", "fr", "vi", "ja", "ko"] {
+            assert_eq!(macro_of(tag), tag);
+        }
+    }
+
+    #[test]
+    fn macro_of_passes_unknown_tags_through() {
+        assert_eq!(macro_of("de"), "de");
+        assert_eq!(macro_of(""), "");
+    }
+
+    #[test]
+    fn variants_of_zh_lists_every_fine_tag() {
+        let v = variants_of("zh");
+        for fine in [
+            "zh-Hans",
+            "zh-Hant",
+            "zh-Hant-HK",
+            "zh-Hant-TW",
+            "yue",
+            "lzh",
+            "nan",
+            "hak",
+            "wuu",
+        ] {
+            assert!(v.contains(&fine), "variants_of(\"zh\") missing {fine}");
+        }
+    }
+
+    #[test]
+    fn variants_of_single_macro_languages_returns_self() {
+        for tag in ["en", "fr", "vi", "ja", "ko"] {
+            assert_eq!(variants_of(tag), &[tag]);
+        }
+    }
+
+    #[test]
+    fn variants_of_unknown_macro_is_empty() {
+        assert_eq!(variants_of("de"), &[] as &[&str]);
+    }
+
+    #[test]
+    fn every_variant_round_trips_through_its_macro() {
+        // variants_of(macro_of(x)) must contain x for every supported tag.
+        for &tag in &[
+            "en", "fr", "vi", "ja", "ko", "zh-Hans", "zh-Hant", "zh-Hant-HK", "zh-Hant-TW", "yue",
+            "lzh", "nan", "hak", "wuu",
+        ] {
+            let m = macro_of(tag);
+            // The `zh` umbrella isn't a fine tag, so skip it; every
+            // other tag must appear in its macro's variants list.
+            assert!(
+                variants_of(m).contains(&tag) || tag == "zh",
+                "{tag} not listed under macro {m}"
+            );
         }
     }
 }

@@ -1,5 +1,7 @@
 use crate::aggregate::{aggregate, AggregateInput};
+use crate::bcp47::{macro_of, variants_of};
 use crate::calibration::{calibrate, CalibrationHints};
+use crate::types::Candidate;
 
 /// Confidence at or above which a Layer 9 unsupported-language signal
 /// short-circuits the pipeline to `Status::Unsupported`. Strong enough
@@ -24,6 +26,7 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         return IdentifyResult {
             candidates: vec![],
             primary_language: None,
+            primary_variant: None,
             status: Status::Unknown,
             reasons: vec!["Empty input after normalization".into()],
             segments: vec![],
@@ -52,6 +55,7 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
                 return IdentifyResult {
                     candidates: vec![],
                     primary_language: None,
+                    primary_variant: None,
                     status: Status::Unsupported,
                     reasons: vec![format!(
                         "Layer 9 (ML classifier) detected unsupported language '{}' (confidence {:.2}) — verdict downgraded to unsupported",
@@ -209,6 +213,7 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         return IdentifyResult {
             candidates: vec![],
             primary_language: None,
+            primary_variant: None,
             status: Status::Unsupported,
             reasons: vec!["Input uses scripts that are not in the supported set".into()],
             segments: vec![],
@@ -222,17 +227,65 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     let hints = CalibrationHints {
         context_multi_language: context.multi_language,
     };
-    let cal = calibrate(ranked, normalized.visible_chars, hints);
+
+    // Collapse fine-grained candidates (zh-Hant, yue, lzh, …) into
+    // their macro language (zh) before calibration. Consumer apps see
+    // grouped candidates with the fine variants exposed via
+    // `Candidate::variants`; the fine primary is exposed separately as
+    // `IdentifyResult::primary_variant`.
+    let macro_ranked = group_by_macro(&ranked);
+    let primary_variant = pick_primary_variant(&ranked, top_macro(&macro_ranked));
+    let cal = calibrate(macro_ranked, normalized.visible_chars, hints);
     notes.push(cal.note);
 
     IdentifyResult {
         candidates: cal.candidates,
         primary_language: cal.primary_language,
+        primary_variant,
         status: cal.status,
         reasons: notes.into_iter().filter(|n| !n.is_empty()).collect(),
         segments,
         normalized_text: normalized.text,
     }
+}
+
+fn group_by_macro(fine: &[Candidate]) -> Vec<Candidate> {
+    use std::collections::BTreeMap;
+    let mut by_macro: BTreeMap<&str, f32> = BTreeMap::new();
+    for c in fine {
+        let m = macro_of(&c.language);
+        *by_macro.entry(m).or_insert(0.0) += c.confidence;
+    }
+    let mut out: Vec<Candidate> = by_macro
+        .into_iter()
+        .map(|(m, conf)| Candidate {
+            language: m.to_string(),
+            variants: variants_of(m).iter().map(|s| (*s).to_string()).collect(),
+            confidence: (conf * 100.0).round() / 100.0,
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+fn top_macro(macro_ranked: &[Candidate]) -> Option<&str> {
+    macro_ranked.first().map(|c| c.language.as_str())
+}
+
+fn pick_primary_variant(fine: &[Candidate], primary_macro: Option<&str>) -> Option<String> {
+    let primary_macro = primary_macro?;
+    fine.iter()
+        .filter(|c| macro_of(&c.language) == primary_macro)
+        .max_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|c| c.language.clone())
 }
 
 fn pick_han_strategy(

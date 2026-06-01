@@ -67,9 +67,10 @@ fn ko_predicate_ending_boosts_ko_signal() {
 #[test]
 fn zh_pattern_boosts_zh_signal() {
     let r = identify("这是老师");
+    assert_eq!(r.primary_language.as_deref(), Some("zh"), "{r:?}");
     assert!(
         matches!(
-            r.primary_language.as_deref(),
+            r.primary_variant.as_deref(),
             Some("zh-Hans") | Some("zh-Hant")
         ),
         "{r:?}"

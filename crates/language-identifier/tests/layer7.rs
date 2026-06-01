@@ -50,7 +50,7 @@ fn m3_paragraph_downgrades_to_ambiguous() {
     ]);
     assert_eq!(r.status, Status::Ambiguous, "M3: {r:?}");
     assert_eq!(r.primary_language.as_deref(), Some("ja"));
-    assert!(has_lang(&r, "zh-Hans") || has_lang(&r, "zh-Hant"));
+    assert!(has_lang(&r, "zh"), "{r:?}");
 }
 
 #[test]
@@ -69,8 +69,9 @@ fn alternating_en_and_ja_sentences_produces_multi_language() {
 #[test]
 fn cjk_only_paragraph_one_winner() {
     let r = identify_lines(&["王老师在大学教中文。", "学生们每天来上课。"]);
+    assert_eq!(r.primary_language.as_deref(), Some("zh"));
     assert!(matches!(
-        r.primary_language.as_deref(),
+        r.primary_variant.as_deref(),
         Some("zh-Hans") | Some("zh-Hant")
     ));
     assert_eq!(r.status, Status::Resolved);

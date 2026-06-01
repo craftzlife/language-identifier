@@ -17,15 +17,10 @@ fn dictionary_promotes_recognized_english() {
 
 #[test]
 fn dictionary_distinguishes_simplified_chinese() {
-    // 老师 is Hans-only. zh-Hans dictionary should win.
+    // 老师 is Hans-only. zh macro should win; primary_variant zh-Hans.
     let r = identify("老师");
-    assert!(
-        matches!(
-            r.primary_language.as_deref(),
-            Some("zh-Hans") | Some("zh-Hant")
-        ),
-        "{r:?}"
-    );
+    assert_eq!(r.primary_language.as_deref(), Some("zh"), "{r:?}");
+    assert_eq!(r.primary_variant.as_deref(), Some("zh-Hans"), "{r:?}");
 }
 
 #[test]
@@ -63,8 +58,9 @@ fn vietnamese_lexicon_boosts_diacritic_free_vi_text() {
 fn dictionary_amplifies_mostly_chinese_paragraph() {
     let r = identify("王老师在大学教中文。学生们每天来上课");
     assert_eq!(r.status, Status::Resolved);
+    assert_eq!(r.primary_language.as_deref(), Some("zh"), "{r:?}");
     assert!(matches!(
-        r.primary_language.as_deref(),
+        r.primary_variant.as_deref(),
         Some("zh-Hans") | Some("zh-Hant")
     ));
 }

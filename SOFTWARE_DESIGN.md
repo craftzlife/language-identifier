@@ -52,12 +52,22 @@ The library accepts either:
 ```json
 {
   "candidates": [
-    { "language": "ja", "confidence": 0.52 },
-    { "language": "zh-Hans", "confidence": 0.48 }
+    {
+      "language": "zh",
+      "variants": ["zh-Hans", "zh-Hant", "zh-Hant-HK", "zh-Hant-TW",
+                   "yue", "lzh", "nan", "hak", "wuu"],
+      "confidence": 0.78
+    },
+    { "language": "ja", "variants": ["ja"], "confidence": 0.05 }
   ],
-  "primaryLanguage": "ja",
+  "primaryLanguage": "zh",
+  "primaryVariant": "zh-Hant",
   "status": "resolved|ambiguous|mixed|unknown|unsupported",
-  "reasons": ["...", "..."]
+  "reasons": ["...", "..."],
+  "segments": [
+    { "language": "zh-Hant", "start": 0, "end": 18, "text": "今天天氣很好" }
+  ],
+  "normalizedText": "..."
 }
 ```
 
@@ -65,10 +75,35 @@ The library accepts either:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `candidates` | array of `{ language: string, confidence: number }` | Ranked candidates with calibrated confidence in `[0, 1]`. |
-| `primaryLanguage` | BCP 47 string | The selected primary language. May still be present when `status = "ambiguous"` (the highest-confidence candidate is reported even when the gap to the next is small). |
-| `status` | enum | See below. |
-| `reasons` | array of strings | Human-readable justification — one explanation line per element. Always an array, even for trivial cases (a one-element array). |
+| `candidates` | array of `{ language, variants, confidence }` | Ranked candidates at **macro language** granularity. `language` is the macro tag (`zh`, `en`, `fr`, `vi`, `ja`, `ko`); `variants` enumerates the fine-grained BCP 47 tags the library can decide under that macro; `confidence` is the sum of fine-grained confidences in `[0, 1]`. |
+| `primaryLanguage` | macro BCP 47 string | Macro tag of the selected primary candidate. May still be present when `status = "ambiguous"`. |
+| `primaryVariant` | fine BCP 47 string | Highest-confidence fine tag within the primary macro language — e.g. `zh-Hant`, `zh-Hant-HK`, `yue`, `lzh`. Equals `primaryLanguage` for monolithic macros (`en`, `fr`, `vi`, `ja`, `ko`). Omitted when status is `unknown` / `unsupported`. |
+| `status` | enum | See below. Computed on the macro-grouped candidate distribution, not the fine distribution. |
+| `reasons` | array of strings | Human-readable justification — one explanation line per element. Reasons keep the fine-grained vocabulary (e.g. "Cantonese (yue) particles detected: 2") because that detail is what's useful for debugging. |
+| `segments` | array of `{ language, start, end, text }` | Embedded-segment spans. `language` keeps the fine-grained variant tag (`zh-Hant`, `yue`, `zh-Hant-HK`, …) so apps can annotate per-segment. |
+| `normalizedText` | string | The NFC-composed, whitespace-collapsed, control-stripped form of the input the pipeline analyzed. |
+
+### Macro grouping
+
+For consumer apps (dictionary, language learning) that don't care
+about Hans vs Hant or Cantonese vs Mandarin, the top-level
+`candidates[*].language` collapses every Sinitic variant under the
+single `zh` macro:
+
+| Macro | Fine variants the library can decide |
+| --- | --- |
+| `zh` | `zh-Hans`, `zh-Hant`, `zh-Hant-HK`, `zh-Hant-TW`, `yue`, `lzh`, `nan`, `hak`, `wuu` |
+| `en` | `en` |
+| `fr` | `fr` |
+| `vi` | `vi` |
+| `ja` | `ja` |
+| `ko` | `ko` |
+
+`yue` (Cantonese), `lzh` (Classical), `nan` (Min Nan), `hak` (Hakka),
+and `wuu` (Wu) are technically separate ISO 639-3 languages — the
+library deliberately groups them under `zh` for UX simplicity. Apps
+that need the linguistic distinction should branch on
+`primaryVariant`.
 
 ### `status` values
 

@@ -12,7 +12,18 @@ pub enum Status {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Candidate {
+    /// Consumer-facing macro language tag (`zh`, `en`, `fr`, `vi`,
+    /// `ja`, `ko`). Apps that don't care about Hans/Hant or Cantonese
+    /// distinctions should branch on this field.
     pub language: String,
+    /// Fine-grained BCP 47 tags this macro represents
+    /// (`zh-Hans` / `zh-Hant` / `zh-Hant-HK` / `zh-Hant-TW` / `yue` /
+    /// `lzh` / `nan` / `hak` / `wuu` for the `zh` macro; just
+    /// `[language]` for monolithic macros). Lists what the library
+    /// *can* decide, not necessarily what fired in this input — see
+    /// [`crate::variants_of`].
+    #[serde(default)]
+    pub variants: Vec<String>,
     pub confidence: f32,
 }
 
@@ -32,8 +43,16 @@ pub struct Segment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentifyResult {
     pub candidates: Vec<Candidate>,
+    /// Macro language tag (`zh`, `en`, `fr`, `vi`, `ja`, `ko`) of the
+    /// primary candidate.
     #[serde(rename = "primaryLanguage", skip_serializing_if = "Option::is_none")]
     pub primary_language: Option<String>,
+    /// Fine-grained BCP 47 tag (`zh-Hant`, `zh-Hant-HK`, `yue`, `lzh`,
+    /// …) of the highest-confidence variant within the primary macro
+    /// language. Equals `primary_language` for monolithic macros (e.g.
+    /// `en`, `fr`). Omitted when status is `unknown` / `unsupported`.
+    #[serde(rename = "primaryVariant", skip_serializing_if = "Option::is_none")]
+    pub primary_variant: Option<String>,
     pub status: Status,
     pub reasons: Vec<String>,
     #[serde(default)]

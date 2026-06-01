@@ -14,7 +14,7 @@ mod pipeline;
 mod segments;
 mod types;
 
-pub use bcp47::{from_iso639, is_supported_iso639};
+pub use bcp47::{from_iso639, is_supported_iso639, macro_of, variants_of};
 #[cfg(feature = "ml-fasttext")]
 pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
 pub use layers::ml::{MlClassifier, UnsupportedSignal};
