@@ -1,17 +1,17 @@
-//! Integration tests for the `FastTextClassifier` Layer 9 default impl.
+//! Integration tests for the `OpenLidClassifier` Layer 9 default impl.
 //!
-//! These tests require the `lid.176.bin` model file (~126 MB). Set
-//! `LANGUAGE_IDENTIFIER_MODEL_PATH=/path/to/lid.176.bin` to opt in.
+//! These tests require the OpenLID v3 model file (~few hundred MB). Set
+//! `LANGUAGE_IDENTIFIER_MODEL_PATH=/path/to/openlid-v3.bin` to opt in.
 //! When the env var is unset, each test prints a skip line and
 //! short-circuits so CI without the model stays green.
 
-#![cfg(feature = "ml-fasttext")]
+#![cfg(feature = "ml-openlid")]
 
 use language_identifier::{
-    identify_with, FastTextClassifier, IdentifyOptions, MlClassifier, Status,
+    identify_with, IdentifyOptions, MlClassifier, OpenLidClassifier, Status,
 };
 
-fn try_load() -> Option<FastTextClassifier> {
+fn try_load() -> Option<OpenLidClassifier> {
     let path = match std::env::var("LANGUAGE_IDENTIFIER_MODEL_PATH") {
         Ok(p) => p,
         Err(_) => {
@@ -19,7 +19,7 @@ fn try_load() -> Option<FastTextClassifier> {
             return None;
         }
     };
-    match FastTextClassifier::builder().model_path(&path).build() {
+    match OpenLidClassifier::builder().model_path(&path).build() {
         Ok(c) => Some(c),
         Err(e) => {
             eprintln!("skip: failed to load model from {path}: {e}");
@@ -31,7 +31,7 @@ fn try_load() -> Option<FastTextClassifier> {
 #[test]
 fn classifier_is_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<FastTextClassifier>();
+    assert_send_sync::<OpenLidClassifier>();
 }
 
 #[test]
@@ -90,15 +90,15 @@ fn korean_paragraph_keeps_korean_primary() {
 }
 
 #[test]
-fn simplified_chinese_routes_zh_to_zh_hans() {
+fn simplified_chinese_routes_cmn_hans_to_zh_hans() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
     };
     let r = identify_with("这是一个中文句子。", &opts);
-    assert_eq!(r.primary_language.as_deref(), Some("zh-Hans"), "{r:?}");
-    // With the ISO 639 → BCP 47 disambiguation, lid.176's `zh` label
-    // now contributes as `zh-Hans` (no Hant-only char in input).
+    // Macro primary is `zh`; fine variant is `zh-Hans`.
+    assert_eq!(r.primary_language.as_deref(), Some("zh"), "{r:?}");
+    assert_eq!(r.primary_variant.as_deref(), Some("zh-Hans"), "{r:?}");
     let layer9 = r
         .reasons
         .iter()
@@ -109,21 +109,22 @@ fn simplified_chinese_routes_zh_to_zh_hans() {
             "expected Layer 9 to surface zh-Hans: {line}"
         );
         assert!(
-            !line.contains("zh:"),
-            "umbrella `zh:` must not appear in Layer 9 reason: {line}"
+            !line.contains("cmn"),
+            "raw `cmn_*` labels must not appear in Layer 9 reason: {line}"
         );
     }
 }
 
 #[test]
-fn traditional_chinese_routes_zh_to_zh_hant() {
+fn traditional_chinese_routes_cmn_hant_to_zh_hant() {
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
     };
-    // `學` is a Hant-only marker per Layer 3.
+    // `學` / `這` / `繁` / `體` — Hant-only markers per Layer 3.
     let r = identify_with("這是繁體中文的句子。", &opts);
-    assert_eq!(r.primary_language.as_deref(), Some("zh-Hant"), "{r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("zh"), "{r:?}");
+    assert_eq!(r.primary_variant.as_deref(), Some("zh-Hant"), "{r:?}");
     let layer9 = r
         .reasons
         .iter()
@@ -137,36 +138,32 @@ fn traditional_chinese_routes_zh_to_zh_hant() {
 }
 
 #[test]
-fn french_input_downgrades_to_unsupported() {
+fn french_input_resolves_to_fr_via_openlid() {
+    // French is in OpenLID's supported set, so it isn't downgraded —
+    // it lands on the full-pipeline `fr` tag.
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
     };
     let r = identify_with("Bonjour le monde", &opts);
-    assert_eq!(r.status, Status::Unsupported, "{r:?}");
-    assert!(r.primary_language.is_none());
-    assert!(r.candidates.is_empty());
-    assert!(
-        r.reasons
-            .iter()
-            .any(|s| s.contains("unsupported language 'fr'")),
-        "expected 'fr' downgrade reason, got: {:?}",
-        r.reasons
-    );
+    assert_ne!(r.status, Status::Unsupported, "{r:?}");
+    assert_eq!(r.primary_language.as_deref(), Some("fr"), "{r:?}");
 }
 
 #[test]
-fn chinese_input_is_not_downgraded_despite_zh_drop_in_classify() {
-    // `zh` is dropped from classify() (variant disambiguation belongs
-    // to Layer 3) but is still in the supported set — the unsupported
-    // signal must therefore stay quiet on pure-Han inputs.
+fn ml_only_spanish_surfaces_es_candidate() {
+    // Spanish has no Tier 1 lexicon / morphology — only Layer 9.
+    // The candidate should appear; status may be Ambiguous because the
+    // ML bonus is capped (see SOFTWARE_DESIGN.md §6).
     let Some(c) = try_load() else { return };
     let opts = IdentifyOptions {
         ml_classifier: Some(&c),
     };
-    let r = identify_with("这是一个中文句子。", &opts);
-    assert_ne!(r.status, Status::Unsupported, "{r:?}");
-    assert!(r.primary_language.is_some());
+    let r = identify_with("Hola, ¿cómo estás?", &opts);
+    assert!(
+        r.candidates.iter().any(|c| c.language == "es"),
+        "expected an `es` candidate: {r:?}"
+    );
 }
 
 #[test]

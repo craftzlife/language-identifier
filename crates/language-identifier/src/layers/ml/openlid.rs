@@ -1,53 +1,54 @@
-//! `FastTextClassifier` — Layer 9 default implementation.
+//! `OpenLidClassifier` — Layer 9 default implementation.
 //!
-//! Wraps Meta/FAIR's `lid.176.bin` (full-precision 176-language
+//! Wraps the OpenLID v3 fastText model (`openlid-v3.bin`, 194-language
 //! language-identification model) via the pure-Rust [`fasttext`] crate.
 //!
 //! ## What this does and does not contribute
 //!
-//! The classifier delegates ISO 639 → BCP 47 translation to
-//! [`crate::bcp47`], which holds the canonical mapping table and the
-//! Tier 2 disambiguation logic (e.g. `zh` → `zh-Hans` / `zh-Hant`).
-//! Predictions whose label is outside the supported set are filtered
-//! out — see the module doc on `crate::bcp47` for the supported tags
-//! and the extension model.
+//! The classifier delegates `iso639-3_Script` label → BCP 47
+//! translation to [`crate::openlid`], which holds the canonical mapping
+//! table and the Sinitic Tier-2 disambiguation logic (`cmn_Hans` /
+//! `cmn_Hant` → text-based promotion to `yue` / `lzh` / `zh-Hant-HK` /
+//! `zh-Hant-TW` / `zh-Hant` / `zh-Hans`). Predictions whose label is
+//! outside the supported set are filtered out — see the module doc on
+//! `crate::openlid` for the supported tags.
 
 use std::path::PathBuf;
 
 use ::fasttext::FastText;
 
 use super::{MlClassifier, UnsupportedSignal};
-use crate::bcp47;
+use crate::openlid;
 
-/// fastText-backed [`MlClassifier`] for Layer 9. Construct via
-/// [`FastTextClassifier::builder`].
-pub struct FastTextClassifier {
+/// OpenLID-backed [`MlClassifier`] for Layer 9. Construct via
+/// [`OpenLidClassifier::builder`].
+pub struct OpenLidClassifier {
     model: FastText,
     top_k: usize,
 }
 
-impl FastTextClassifier {
+impl OpenLidClassifier {
     /// Start configuring a classifier. The builder's only required
-    /// step is [`FastTextClassifierBuilder::model_path`].
-    pub fn builder() -> FastTextClassifierBuilder {
-        FastTextClassifierBuilder {
+    /// step is [`OpenLidClassifierBuilder::model_path`].
+    pub fn builder() -> OpenLidClassifierBuilder {
+        OpenLidClassifierBuilder {
             model_path: None,
             top_k: 5,
         }
     }
 }
 
-/// Builder for [`FastTextClassifier`]. Future tuning knobs
+/// Builder for [`OpenLidClassifier`]. Future tuning knobs
 /// (probability threshold, dictionary lazy loading) will land here
 /// without breaking the constructor.
-pub struct FastTextClassifierBuilder {
+pub struct OpenLidClassifierBuilder {
     model_path: Option<PathBuf>,
     top_k: usize,
 }
 
-impl FastTextClassifierBuilder {
-    /// Set the path to a fastText binary model file (e.g.
-    /// `lid.176.bin`). Required.
+impl OpenLidClassifierBuilder {
+    /// Set the path to an OpenLID fastText binary model file (e.g.
+    /// `openlid-v3.bin`). Required.
     pub fn model_path<P: Into<PathBuf>>(mut self, p: P) -> Self {
         self.model_path = Some(p.into());
         self
@@ -61,27 +62,28 @@ impl FastTextClassifierBuilder {
     }
 
     /// Load the model and finalize the classifier.
-    pub fn build(self) -> Result<FastTextClassifier, LoadError> {
+    pub fn build(self) -> Result<OpenLidClassifier, LoadError> {
         let path = self.model_path.ok_or(LoadError::NoModelPath)?;
         let model = FastText::load_model(&path).map_err(|e| LoadError::FastText(e.to_string()))?;
-        Ok(FastTextClassifier {
+        Ok(OpenLidClassifier {
             model,
             top_k: self.top_k,
         })
     }
 }
 
-impl MlClassifier for FastTextClassifier {
+impl MlClassifier for OpenLidClassifier {
     fn classify(&self, normalized_text: &str) -> Vec<(String, f32)> {
         let cleaned = scrub_newlines(normalized_text);
-        // fastText is single-line; the Tier 2 disambiguator needs the
-        // original normalized text so its Hant-character scan sees
-        // exactly what every other layer sees.
+        // fastText is single-line; the Sinitic Tier-2 disambiguator
+        // needs the original normalized text so its Hant-character scan
+        // sees exactly what every other layer sees.
         self.model
             .predict(&cleaned, self.top_k, 0.0)
             .into_iter()
             .filter_map(|p| {
-                bcp47::from_iso639(&p.label, normalized_text).map(|tag| (tag.to_string(), p.prob))
+                openlid::from_openlid_label(&p.label, normalized_text)
+                    .map(|tag| (tag.to_string(), p.prob))
             })
             .collect()
     }
@@ -89,10 +91,7 @@ impl MlClassifier for FastTextClassifier {
     fn unsupported_signal(&self, normalized_text: &str) -> Option<UnsupportedSignal> {
         let cleaned = scrub_newlines(normalized_text);
         let top = self.model.predict(&cleaned, 1, 0.0).into_iter().next()?;
-        // `zh` IS in the supported set — variant disambiguation belongs
-        // to `bcp47::from_iso639`. Treating it as "unsupported" here
-        // would wrongly downgrade Han inputs.
-        if bcp47::is_supported_iso639(&top.label) {
+        if openlid::is_supported_openlid_label(&top.label) {
             None
         } else {
             let code = top.label.strip_prefix("__label__").unwrap_or(&top.label);
@@ -104,10 +103,10 @@ impl MlClassifier for FastTextClassifier {
     }
 }
 
-/// Errors produced while constructing a [`FastTextClassifier`].
+/// Errors produced while constructing an [`OpenLidClassifier`].
 #[derive(Debug)]
 pub enum LoadError {
-    /// [`FastTextClassifierBuilder::model_path`] was never called.
+    /// [`OpenLidClassifierBuilder::model_path`] was never called.
     NoModelPath,
     /// The underlying fastText library failed to load the model
     /// (file missing, corrupted, wrong format version, etc.).
@@ -142,14 +141,14 @@ mod tests {
 
     #[test]
     fn builder_without_path_errors() {
-        let r = FastTextClassifier::builder().build();
+        let r = OpenLidClassifier::builder().build();
         assert!(matches!(r, Err(LoadError::NoModelPath)));
     }
 
     #[test]
     fn builder_with_bogus_path_errors() {
-        let r = FastTextClassifier::builder()
-            .model_path("/nonexistent/path/to/lid.176.bin")
+        let r = OpenLidClassifier::builder()
+            .model_path("/nonexistent/path/to/openlid-v3.bin")
             .build();
         assert!(matches!(r, Err(LoadError::FastText(_))));
     }

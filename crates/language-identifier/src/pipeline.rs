@@ -5,8 +5,8 @@ use crate::types::Candidate;
 
 /// Confidence at or above which a Layer 9 unsupported-language signal
 /// short-circuits the pipeline to `Status::Unsupported`. Strong enough
-/// to avoid false positives on mixed inputs (where lid.176 typically
-/// splits 0.55 / 0.40 between two languages); paranoid models can pick
+/// to avoid false positives on mixed inputs (where typical LID models
+/// split 0.55 / 0.40 between two languages); paranoid models can pick
 /// a higher threshold by post-processing their `UnsupportedSignal`.
 const ML_UNSUPPORTED_THRESHOLD: f32 = 0.50;
 use crate::layers::{
@@ -258,10 +258,23 @@ fn group_by_macro(fine: &[Candidate]) -> Vec<Candidate> {
     }
     let mut out: Vec<Candidate> = by_macro
         .into_iter()
-        .map(|(m, conf)| Candidate {
-            language: m.to_string(),
-            variants: variants_of(m).iter().map(|s| (*s).to_string()).collect(),
-            confidence: (conf * 100.0).round() / 100.0,
+        .map(|(m, conf)| {
+            // Macros without enumerated fine variants (Layer 9 ML-only
+            // tags like `es`, `de`, `ru`) report themselves as their
+            // own implicit single variant.
+            let variants: Vec<String> = {
+                let listed = variants_of(m);
+                if listed.is_empty() {
+                    vec![m.to_string()]
+                } else {
+                    listed.iter().map(|s| (*s).to_string()).collect()
+                }
+            };
+            Candidate {
+                language: m.to_string(),
+                variants,
+                confidence: (conf * 100.0).round() / 100.0,
+            }
         })
         .collect();
     out.sort_by(|a, b| {

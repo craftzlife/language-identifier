@@ -21,11 +21,16 @@ pipeline spec.
 | 6. Morphology / tokenization hints (per-token EN/VI attribution + CJK endings) | ✅ |
 | 7. Context window scoring (per-sentence winners + intra-sentence Han runs) | ✅ |
 | 8. User preference / app state | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
-| 9. Lightweight ML classifier | ✅ v4.1 (default impl `FastTextClassifier` behind `ml-fasttext` feature) |
+| 9. Lightweight ML classifier | ✅ v4.2 (default impl `OpenLidClassifier` behind `ml-openlid` feature, OpenLID v3 model, 194 languages) |
 | 10. LLM resolver | ❌ out of scope (see [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes)) |
 | Final calibration & ambiguity handling (resolved / ambiguous / **mixed** / unknown / unsupported, with context-driven downgrade) | ✅ |
 
-Supported languages: `en`, `fr`, `vi`, `ja`, `zh-Hans`, `zh-Hant`, `zh-Hant-HK`, `zh-Hant-TW`, `yue` (Cantonese), `lzh` (Classical Chinese), `nan` (Min Nan), `hak` (Hakka), `wuu` (Wu), `zh` (variant-unclear umbrella tag for embedded ambiguous Han spans), `ko`. See [SDD §6.1](./SOFTWARE_DESIGN.md#61-detection-precision-per-variant) for per-variant precision.
+Supported languages come in two tiers:
+
+- **Tier 1 — full pipeline** (scripts + lexicons + morphology + orthography markers): `en`, `fr`, `vi`, `ja`, `ko`, `zh-Hans`, `zh-Hant`, `zh-Hant-HK`, `zh-Hant-TW`, `yue` (Cantonese), `lzh` (Classical Chinese), `nan` (Min Nan), `hak` (Hakka), `wuu` (Wu), plus the `zh` umbrella tag for variant-unclear Han spans.
+- **Tier 2 — Layer 9 ML-only** (enabled by the `ml-openlid` feature): the remaining ~180 languages covered by OpenLID v3 — Spanish, German, Russian, Arabic, Hindi, Thai, Portuguese, Italian, Dutch, Polish, Turkish, Indonesian, Bengali, etc. — surface as candidates when the classifier is confident but have no segment-level attribution. Calibration may report `Status::Ambiguous` for Tier 2 inputs because the L9 bonus is capped (see SOFTWARE_DESIGN.md §6).
+
+See [SDD §6.1](./SOFTWARE_DESIGN.md#61-detection-precision-per-variant) for per-variant precision.
 
 ## Build
 
@@ -85,102 +90,151 @@ let r = identify_with("先生", &opts);
 
 Layer 9 (when provided) folds its scores into aggregation as a capped
 bonus. A bundled `MlClassifier` —
-[`FastTextClassifier`](#layer-9-with-the-bundled-fasttext-default-v41) —
-ships behind the `ml-fasttext` cargo feature; see below. Layer 10
+[`OpenLidClassifier`](#layer-9-with-the-bundled-openlid-default-v42) —
+ships behind the `ml-openlid` cargo feature; see below. Layer 10
 (LLM tie-breaker) is deliberately out of library scope — see
 [SDD §7.1](./SOFTWARE_DESIGN.md#71-layer-notes). Consumers needing
 LLM-based disambiguation should wrap `identify` in their application
 layer.
 
-### Layer 9 with the bundled fastText default (v4.1)
+### Layer 9 with the bundled OpenLID default (v4.2)
 
-Enable the `ml-fasttext` feature to compile the default `MlClassifier`
-backed by Meta/FAIR's `lid.176.bin`. The
+Enable the `ml-openlid` feature to compile the default `MlClassifier`
+backed by the [OpenLID v3](https://github.com/laurieburchell/open-lid-dataset)
+fastText model (`openlid-v3.bin`, 194 languages). The
 [`fasttext`](https://crates.io/crates/fasttext) crate v0.8 used
 underneath is a pure-Rust port — no `clang` / `cmake` / C++ toolchain
 needed.
 
-Download the model file (~126 MB) once:
-
-```bash
-curl -L -o lid.176.bin \
-  https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
-```
-
-Use it from Rust:
+Use the model from Rust:
 
 ```rust
 use language_identifier::{
-    identify_with, FastTextClassifier, IdentifyOptions,
+    identify_with, OpenLidClassifier, IdentifyOptions,
 };
 
-let classifier = FastTextClassifier::builder()
-    .model_path("./lid.176.bin")
+let classifier = OpenLidClassifier::builder()
+    .model_path("./openlid-v3.bin")
     .build()?;
 let opts = IdentifyOptions {
     ml_classifier: Some(&classifier),
 };
-let r = identify_with("Bonjour le monde", &opts);
+let r = identify_with("Hola, ¿cómo estás?", &opts);
 ```
 
-Or use it from the CLI:
+Or from the CLI:
 
 ```bash
-cargo run --features ml-fasttext -p language-identifier-cli -- \
-  --ml-fasttext ./lid.176.bin --pretty "Bonjour le monde"
+cargo run --features ml-openlid -p language-identifier-cli -- \
+  --ml-openlid ./openlid-v3.bin --pretty "Hola, ¿cómo estás?"
 ```
 
-`FastTextClassifier` maps lid.176's labels into the library's BCP 47
-set as follows:
+`OpenLidClassifier` maps OpenLID's `iso639-3_Script` labels into the
+library's BCP 47 set. Examples:
 
-| fastText label  | mapped tag                        |
-| --------------- | --------------------------------- |
-| `__label__en`   | `en`                              |
-| `__label__vi`   | `vi`                              |
-| `__label__ja`   | `ja`                              |
-| `__label__ko`   | `ko`                              |
-| `__label__zh`   | `zh-Hant` or `zh-Hans` (see below) |
-| any other       | *dropped*                         |
+| OpenLID label   | mapped tag                                |
+| --------------- | ----------------------------------------- |
+| `eng_Latn`      | `en`                                      |
+| `fra_Latn`      | `fr`                                      |
+| `vie_Latn`      | `vi`                                      |
+| `jpn_Jpan`      | `ja`                                      |
+| `kor_Hang`      | `ko`                                      |
+| `yue_Hant`      | `yue`                                     |
+| `lzh_Hani`      | `lzh`                                     |
+| `cmn_Hans`      | `zh-Hans` (or `yue` / `lzh` / `zh-Hant-*` per text) |
+| `cmn_Hant`      | `zh-Hant` (or `yue` / `zh-Hant-HK` / `zh-Hant-TW` per text) |
+| `spa_Latn`      | `es` (Tier 2 — ML-only)                   |
+| `rus_Cyrl`      | `ru` (Tier 2 — ML-only)                   |
+| `arb_Arab`      | `ar` (Tier 2 — ML-only)                   |
+| any other       | *dropped*                                 |
 
-lid.176 emits a single `__label__zh` without splitting Hans vs Hant. The
-library promotes the label to a concrete variant in
-[`bcp47::resolve_zh`](./crates/language-identifier/src/bcp47.rs): if the
-normalized input contains any Traditional-only character (per Layer 3's
-orthography table) the label becomes `zh-Hant`, otherwise it defaults to
-the modern `zh-Hans`. Layer 3's explicit Hans-only marker path still
-wins when both signals fire — Layer 9 earns its keep on cross-script
-ties and on pure-Han inputs that have no kana to anchor them to
-Japanese.
+OpenLID's `cmn_Hans` / `cmn_Hant` labels are forwarded to
+[`bcp47::resolve_zh`](./crates/language-identifier/src/bcp47.rs), which
+inspects the text and promotes the prediction to the most specific tag
+the input supports (Cantonese particles → `yue`, dense classical
+function words → `lzh`, HK/TW region markers → `zh-Hant-HK` /
+`zh-Hant-TW`). OpenLID's dedicated `yue_Hant` / `lzh_Hani` labels map
+straight through with no text scan.
 
-**Unsupported-language downgrade.** When `FastTextClassifier` is
-confident the input is in a language outside the supported set (e.g.
-French through this `{en, vi, ja, ko, zh-*}`-only library), the
-pipeline returns `status: "unsupported"` instead of forcing the
-verdict onto `en` via the Latin-script default. The threshold is
-0.50 confidence; the `zh` umbrella label is treated as supported here
-so pure-Han inputs are never downgraded. Custom `MlClassifier` impls
-can opt into this behavior by overriding the trait's
+**Unsupported-language downgrade.** When `OpenLidClassifier` returns a
+top label that is off our curated mapping table (shouldn't happen for
+trained OpenLID v3 output, but defends against future model changes),
+the pipeline returns `status: "unsupported"` instead of forcing a
+verdict. The threshold is 0.50 confidence. Custom `MlClassifier`
+impls can opt into this behavior by overriding the trait's
 [`unsupported_signal`](https://docs.rs/language-identifier/latest/language_identifier/trait.MlClassifier.html#method.unsupported_signal)
 method (default returns `None`).
 
-The `lid.176.bin` weights are licensed CC-BY-SA 3.0 by the upstream
-authors; the library code stays MIT/Apache-2.0. See [`NOTICE`](./NOTICE).
+OpenLID weights and license terms come from the upstream project; the
+library code stays MIT/Apache-2.0.
 
 ## CLI usage
 
+### Synopsis
+
+```text
+language-identifier [--pretty] [--ml-openlid <path>] <text>
+language-identifier [--pretty] [--ml-openlid <path>] -
+```
+
+The CLI prints a single JSON-encoded `IdentifyResult` to stdout. It
+exits `0` on success, `2` on argument errors, and `1` on serialization
+errors.
+
+### Arguments
+
+| Argument | Description |
+| --- | --- |
+| `<text>` | One or more positional arguments are joined with single spaces and identified as a single string. |
+| `-` | When the only positional argument is a single dash, the CLI reads one input per line from stdin and identifies them as a single multi-line input (equivalent to the library's `identify_lines`). |
+
+### Options
+
+| Option | Description |
+| --- | --- |
+| `--pretty` | Indent the JSON output (two-space indent). Without this flag the output is single-line minified JSON, convenient for piping into `jq`. |
+| `--ml-openlid <path>` | Enable Layer 9 (the lightweight ML classifier) using the OpenLID v3 fastText model at `<path>`. Activates Tier 2 language detection (~180 additional languages beyond the Tier 1 full-pipeline set). Requires the binary to be built with `--features ml-openlid`; without that feature flag the option errors out. The path is to the `.bin` model file — see [Layer 9 with the bundled OpenLID default](#layer-9-with-the-bundled-openlid-default-v42). |
+
+> The `-q` flag in the examples below is a `cargo run` option (short for
+> `--quiet`) that suppresses cargo's own build-progress output so only
+> the JSON result reaches stdout. It is not an option of the
+> language-identifier CLI itself, and is unnecessary when invoking a
+> pre-built binary directly (e.g. `./target/release/language-identifier
+> ...`).
+
+### Examples
+
+**Default Tier 1 (no model needed)**
+
 ```bash
-# single argument
-cargo run -q -p language-identifier-cli -- "先生"
+# Single argument — Vietnamese phrase
+cargo run -q -p language-identifier-cli -- "giáo viên đại học"
 
-# pretty-print
-cargo run -q -p language-identifier-cli -- --pretty "giáo viên đại học"
+# Pretty-print — Cantonese (yue) routed under the zh macro
+cargo run -q -p language-identifier-cli -- --pretty "今日朝早，我喺旺角行過一條好熱鬧嘅街"
 
-# read array-of-lines input from stdin (use '-' as the argument)
-printf '田中先生は大学で日本語を教えています。\n学生たちは毎日授業に参加し、新しい言葉や文法を学んでいます。\n' \
+# Multi-line input via stdin
+printf '田中先生は大学で日本語を教えています。\n学生たちは毎日授業に参加しています。\n' \
   | cargo run -q -p language-identifier-cli -- --pretty -
 ```
 
-Example output for a mixed-language input:
+**With Layer 9 / OpenLID (Tier 1 + Tier 2)**
+
+```bash
+# Tier 2 (Spanish, Russian, Arabic, Hindi, Thai, …) — Layer 9 only
+cargo run -q --features ml-openlid -p language-identifier-cli -- \
+  --ml-openlid ./openlid-v3.bin --pretty "Hola, ¿cómo estás?"
+
+# Tier 1 + Layer 9 boost (French) — model confirms the fr verdict
+cargo run -q --features ml-openlid -p language-identifier-cli -- \
+  --ml-openlid ./openlid-v3.bin --pretty "Bonjour le monde"
+
+# Pipe into jq to extract just the top result
+echo "Привет мир" | cargo run -q --features ml-openlid -p language-identifier-cli -- \
+  --ml-openlid ./openlid-v3.bin - | jq '.primaryLanguage'
+```
+
+### Example output
 
 ```bash
 $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは world ありがとう"
@@ -189,11 +243,12 @@ $ cargo run -q -p language-identifier-cli -- --pretty "Hello こんにちは wor
 ```json
 {
   "candidates": [
-    { "language": "en", "confidence": 0.61 },
-    { "language": "ja", "confidence": 0.37 },
-    { "language": "vi", "confidence": 0.02 }
+    { "language": "en", "variants": ["en"], "confidence": 0.61 },
+    { "language": "ja", "variants": ["ja"], "confidence": 0.37 },
+    { "language": "vi", "variants": ["vi"], "confidence": 0.02 }
   ],
   "primaryLanguage": "en",
+  "primaryVariant": "en",
   "status": "mixed",
   "reasons": [
     "Script counts — latin:10, hiragana:5, katakana:0, han:0, hangul:0",
@@ -241,11 +296,11 @@ by `cbindgen` on every cargo build at
 `target/c-header/language_identifier.h`.
 
 UniFFI symbols and the C ABI coexist in the same compiled library, so the
-artifact you ship can be consumed by either transport. The `ml-fasttext`
+artifact you ship can be consumed by either transport. The `ml-openlid`
 feature is intentionally not enabled in the FFI crate — mobile apps can't
-realistically bundle the 126 MB model, and desktop consumers can call the
-Rust API directly. Each build script's header comment lists its one-time
-prerequisites (rustup targets, Android NDK, MinGW, `cross`, …).
+realistically bundle the OpenLID model, and desktop consumers can call
+the Rust API directly. Each build script's header comment lists its
+one-time prerequisites (rustup targets, Android NDK, MinGW, `cross`, …).
 
 ## Output schema
 
@@ -325,7 +380,7 @@ the full field semantics, macro grouping table, and status definitions.
 - **`HanAmbiguous` spans still surface as `zh`** (the variant-unclear umbrella
   tag). Disambiguating an isolated Han snippet to `ja` vs `zh-Hans` vs
   `zh-Hant` *without* kana or markers requires Layer 9 (the bundled
-  fastText classifier) or an application-layer LLM tie-breaker.
+  OpenLID classifier) or an application-layer LLM tie-breaker.
 - **Sentence splitting on Latin abbreviations** (`Mr.`, `Dr.`) over-splits
   sentences. Per-token attribution still aggregates correctly to the same
   language, so this is cosmetic in the `reason` notes but doesn't change

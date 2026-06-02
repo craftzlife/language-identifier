@@ -1,9 +1,10 @@
 //! Layer 9 — Lightweight ML classifier.
 //!
 //! The trait is always available. The default implementation
-//! [`fasttext::FastTextClassifier`] (backed by Meta/FAIR's
-//! `lid.176.bin`) ships behind the `ml-fasttext` cargo feature.
-//! Callers can also plug in their own classifier via
+//! [`openlid::OpenLidClassifier`] (backed by the OpenLID v3 fastText
+//! model, `openlid-v3.bin`, 194 languages with `iso639-3_Script`
+//! labels) ships behind the `ml-openlid` cargo feature. Callers can
+//! also plug in their own classifier via
 //! [`crate::IdentifyOptions::ml_classifier`].
 //!
 //! The classifier is consulted once per call, after Layers 0–7 have
@@ -13,8 +14,8 @@
 //! lexical layers but cannot single-handedly override a strong script
 //! signal.
 
-#[cfg(feature = "ml-fasttext")]
-pub mod fasttext;
+#[cfg(feature = "ml-openlid")]
+pub mod openlid;
 
 /// Per-language language-identification confidence over the supported
 /// BCP 47 tag set.
@@ -38,10 +39,7 @@ pub trait MlClassifier: Send + Sync {
     ///
     /// Returning `Some(signal)` lets the pipeline downgrade the verdict
     /// to [`crate::Status::Unsupported`] instead of forcing the input
-    /// into a supported tag. Useful when a French sentence reaches a
-    /// library configured only for `{en, vi, ja, ko, zh-*}` — without
-    /// this signal the deterministic layers would default the Latin
-    /// script to `en`.
+    /// into a supported tag.
     ///
     /// The default impl returns `None`. Existing custom classifiers
     /// keep working unchanged; only implementors that know their
@@ -56,7 +54,7 @@ pub trait MlClassifier: Send + Sync {
 /// the library's supported BCP 47 set.
 #[derive(Debug, Clone)]
 pub struct UnsupportedSignal {
-    /// Label the classifier uses internally (e.g. `"fr"`, `"de"`).
+    /// Label the classifier uses internally (e.g. `"xxx_Yyyy"`).
     /// Surfaced verbatim in the `reasons` array; the pipeline does not
     /// interpret it as a BCP 47 tag.
     pub label: String,

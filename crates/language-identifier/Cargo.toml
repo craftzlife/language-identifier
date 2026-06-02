@@ -8,11 +8,12 @@ description = "Layered language identification for short and multi-line text inp
 
 [features]
 default = []
-# Ships the default `MlClassifier` impl backed by Meta/FAIR's
-# `lid.176.bin`. The `fasttext` crate is a pure-Rust port (no C++ FFI),
-# so enabling this feature adds two transitive deps (`rayon`,
-# `thiserror`) but no native build requirements.
-ml-fasttext = ["dep:fasttext"]
+# Ships the default `MlClassifier` impl backed by the OpenLID v3
+# fastText model (`openlid-v3.bin`, 194 languages). The `fasttext`
+# crate is a pure-Rust port (no C++ FFI), so enabling this feature
+# adds two transitive deps (`rayon`, `thiserror`) but no native build
+# requirements.
+ml-openlid = ["dep:fasttext"]
 
 [dependencies]
 serde = { workspace = true }

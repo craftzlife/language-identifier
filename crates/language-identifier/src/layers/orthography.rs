@@ -76,14 +76,17 @@ pub fn is_fr_marker_char(c: char) -> bool {
     matches!(c, 'ç' | 'Ç' | 'œ' | 'Œ' | 'æ' | 'Æ')
 }
 
+#[cfg_attr(not(feature = "ml-openlid"), allow(dead_code))]
 pub fn is_hant_only_char(c: char) -> bool {
     is_hant_only(c)
 }
 
+#[cfg_attr(not(feature = "ml-openlid"), allow(dead_code))]
 pub fn is_hant_hk_marker_char(c: char) -> bool {
     is_hant_hk_marker(c)
 }
 
+#[cfg_attr(not(feature = "ml-openlid"), allow(dead_code))]
 pub fn is_hant_tw_marker_char(c: char) -> bool {
     is_hant_tw_marker(c)
 }
@@ -91,6 +94,7 @@ pub fn is_hant_tw_marker_char(c: char) -> bool {
 /// Whether `text` contains at least one Cantonese-only Han character.
 /// Used by [`crate::bcp47`] Tier 2 to escalate a coarse `zh` label to
 /// the `yue` tag.
+#[cfg_attr(not(feature = "ml-openlid"), allow(dead_code))]
 pub fn has_yue_marker(text: &str) -> bool {
     text.chars().any(is_yue_marker)
 }
@@ -98,6 +102,7 @@ pub fn has_yue_marker(text: &str) -> bool {
 /// Whether `text` looks like Classical / Literary Chinese (`lzh`).
 /// Triggered when classical function-word characters reach a density
 /// substantially higher than would be expected in modern Chinese prose.
+#[cfg_attr(not(feature = "ml-openlid"), allow(dead_code))]
 pub fn is_classical_chinese(text: &str) -> bool {
     let mut han_chars = 0usize;
     let mut lzh_hits = 0usize;

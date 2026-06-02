@@ -1,7 +1,7 @@
 //! Language Identifier — layered identification of natural language from text input.
 //!
 //! See `SOFTWARE_DESIGN.md` at the repository root for the full design.
-//! Layers 0–9 are implemented (Layer 9 behind the `ml-fasttext` cargo
+//! Layers 0–9 are implemented (Layer 9 behind the `ml-openlid` cargo
 //! feature); Layer 10 (LLM) is deliberately out of scope — see
 //! SOFTWARE_DESIGN.md §7.1.
 
@@ -9,14 +9,16 @@ mod aggregate;
 mod bcp47;
 mod calibration;
 mod layers;
+#[cfg(feature = "ml-openlid")]
+mod openlid;
 mod options;
 mod pipeline;
 mod segments;
 mod types;
 
-pub use bcp47::{from_iso639, is_supported_iso639, macro_of, variants_of};
-#[cfg(feature = "ml-fasttext")]
-pub use layers::ml::fasttext::{FastTextClassifier, LoadError as FastTextLoadError};
+pub use bcp47::{macro_of, variants_of};
+#[cfg(feature = "ml-openlid")]
+pub use layers::ml::openlid::{LoadError as OpenLidLoadError, OpenLidClassifier};
 pub use layers::ml::{MlClassifier, UnsupportedSignal};
 pub use options::IdentifyOptions;
 pub use types::{Candidate, IdentifyResult, Segment, Status};

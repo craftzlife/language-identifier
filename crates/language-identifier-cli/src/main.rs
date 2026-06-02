@@ -3,17 +3,17 @@ use std::process::ExitCode;
 
 use language_identifier::{identify_lines_with, identify_with, IdentifyOptions};
 
-#[cfg(feature = "ml-fasttext")]
-use language_identifier::FastTextClassifier;
+#[cfg(feature = "ml-openlid")]
+use language_identifier::OpenLidClassifier;
 
 const USAGE: &str = "\
 Usage:
-  language-identifier [--pretty] [--ml-fasttext <path>] <text>
-  language-identifier [--pretty] [--ml-fasttext <path>] -
+  language-identifier [--pretty] [--ml-openlid <path>] <text>
+  language-identifier [--pretty] [--ml-openlid <path>] -
 
   --pretty                Output indented JSON
-  --ml-fasttext <path>    Enable Layer 9 using the lid.176.bin model at <path>
-                          (requires --features ml-fasttext at build time)
+  --ml-openlid <path>     Enable Layer 9 using the openlid-v3.bin model at <path>
+                          (requires --features ml-openlid at build time)
   -                       Read one input per line from stdin and identify
                           them as an array
 ";
@@ -35,7 +35,7 @@ fn main() -> ExitCode {
         }
     });
 
-    let ml_path = match take_flag_value(&mut args, "--ml-fasttext") {
+    let ml_path = match take_flag_value(&mut args, "--ml-openlid") {
         Ok(v) => v,
         Err(e) => {
             eprintln!("{e}\n\n{USAGE}");
@@ -48,30 +48,30 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    #[cfg(feature = "ml-fasttext")]
+    #[cfg(feature = "ml-openlid")]
     let classifier = match ml_path.as_deref() {
-        Some(p) => match FastTextClassifier::builder().model_path(p).build() {
+        Some(p) => match OpenLidClassifier::builder().model_path(p).build() {
             Ok(c) => Some(c),
             Err(e) => {
-                eprintln!("--ml-fasttext: {e}");
+                eprintln!("--ml-openlid: {e}");
                 return ExitCode::from(2);
             }
         },
         None => None,
     };
 
-    #[cfg(not(feature = "ml-fasttext"))]
+    #[cfg(not(feature = "ml-openlid"))]
     if ml_path.is_some() {
-        eprintln!("--ml-fasttext requires building with `--features ml-fasttext`");
+        eprintln!("--ml-openlid requires building with `--features ml-openlid`");
         return ExitCode::from(2);
     }
 
     let opts = IdentifyOptions {
-        #[cfg(feature = "ml-fasttext")]
+        #[cfg(feature = "ml-openlid")]
         ml_classifier: classifier
             .as_ref()
             .map(|c| c as &dyn language_identifier::MlClassifier),
-        #[cfg(not(feature = "ml-fasttext"))]
+        #[cfg(not(feature = "ml-openlid"))]
         ml_classifier: None,
     };
 

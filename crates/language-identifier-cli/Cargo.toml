@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [features]
 default = []
-ml-fasttext = ["language-identifier/ml-fasttext"]
+ml-openlid = ["language-identifier/ml-openlid"]
 
 [dependencies]
 language-identifier = { path = "../language-identifier" }
