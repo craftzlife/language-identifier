@@ -123,10 +123,16 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
         ));
     }
     if ortho.nan_markers > 0 {
-        notes.push(format!("Min Nan (nan) markers detected: {}", ortho.nan_markers));
+        notes.push(format!(
+            "Min Nan (nan) markers detected: {}",
+            ortho.nan_markers
+        ));
     }
     if ortho.hak_markers > 0 {
-        notes.push(format!("Hakka (hak) markers detected: {}", ortho.hak_markers));
+        notes.push(format!(
+            "Hakka (hak) markers detected: {}",
+            ortho.hak_markers
+        ));
     }
     if ortho.wuu_markers > 0 {
         notes.push(format!("Wu (wuu) markers detected: {}", ortho.wuu_markers));

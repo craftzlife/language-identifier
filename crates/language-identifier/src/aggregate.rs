@@ -208,7 +208,9 @@ fn accumulate_script_weights(w: &mut BTreeMap<String, f32>, input: &AggregateInp
         add(w, "ja", kana_w);
     }
     if han_w > 0.0 {
-        for (lang, share) in split_han_mass(han_w, input.counts.kana(), input.counts.han, input.ortho) {
+        for (lang, share) in
+            split_han_mass(han_w, input.counts.kana(), input.counts.han, input.ortho)
+        {
             add(w, lang, share);
         }
     }

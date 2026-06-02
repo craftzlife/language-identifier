@@ -233,7 +233,10 @@ fn try_override(chars: &[char], start: usize, end: usize) -> Option<HanRunOverri
         return None;
     }
 
-    let han_in_run = chars.iter().filter(|&&c| classify(c) == Script::Han).count();
+    let han_in_run = chars
+        .iter()
+        .filter(|&&c| classify(c) == Script::Han)
+        .count();
     let strategy = if sig.yue_markers > 0 {
         HanStrategy::CantonesePreferred
     } else if sig.lzh_markers >= 3 && han_in_run >= 4 {
@@ -251,7 +254,11 @@ fn try_override(chars: &[char], start: usize, end: usize) -> Option<HanRunOverri
         // strategy rather than commit to one variant.
         return None;
     };
-    Some(HanRunOverride { start, end, strategy })
+    Some(HanRunOverride {
+        start,
+        end,
+        strategy,
+    })
 }
 
 fn push_span(

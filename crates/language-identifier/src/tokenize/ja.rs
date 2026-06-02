@@ -6,11 +6,11 @@
 
 #[cfg(feature = "tokenize")]
 pub fn tokenize(text: &str) -> Vec<(String, usize, usize)> {
-    use std::sync::OnceLock;
     use lindera::dictionary::{load_embedded_dictionary, DictionaryKind};
     use lindera::mode::Mode;
     use lindera::segmenter::Segmenter;
     use lindera::tokenizer::Tokenizer;
+    use std::sync::OnceLock;
 
     static TOKENIZER: OnceLock<Option<Tokenizer>> = OnceLock::new();
     let tokenizer = TOKENIZER.get_or_init(|| {

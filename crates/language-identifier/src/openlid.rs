@@ -319,13 +319,22 @@ mod tests {
     #[test]
     fn sinitic_delegates_to_resolve_zh() {
         // Plain Han → defaults to Hans.
-        assert_eq!(from_openlid_label("cmn_Hans", "我们今天去学校"), Some("zh-Hans"));
+        assert_eq!(
+            from_openlid_label("cmn_Hans", "我们今天去学校"),
+            Some("zh-Hans")
+        );
         assert_eq!(from_openlid_label("cmn_Hans", "Hello"), Some("zh-Hans"));
 
         // Hant-only chars → Hant (or HK/TW with region markers).
         assert_eq!(from_openlid_label("cmn_Hant", "學生"), Some("zh-Hant"));
-        assert_eq!(from_openlid_label("cmn_Hant", "學生嘥時間"), Some("zh-Hant-HK"));
-        assert_eq!(from_openlid_label("cmn_Hant", "臺灣的學生"), Some("zh-Hant-TW"));
+        assert_eq!(
+            from_openlid_label("cmn_Hant", "學生嘥時間"),
+            Some("zh-Hant-HK")
+        );
+        assert_eq!(
+            from_openlid_label("cmn_Hant", "臺灣的學生"),
+            Some("zh-Hant-TW")
+        );
 
         // Cantonese particles override the model's `cmn_Hant` guess.
         assert_eq!(from_openlid_label("cmn_Hant", "我嘅學生"), Some("yue"));
@@ -366,16 +375,13 @@ mod tests {
     #[test]
     fn is_supported_covers_known_labels() {
         for label in [
-            "eng_Latn",
-            "fra_Latn",
-            "cmn_Hans",
-            "cmn_Hant",
-            "yue_Hant",
-            "spa_Latn",
-            "rus_Cyrl",
+            "eng_Latn", "fra_Latn", "cmn_Hans", "cmn_Hant", "yue_Hant", "spa_Latn", "rus_Cyrl",
             "arb_Arab",
         ] {
-            assert!(is_supported_openlid_label(label), "expected {label} supported");
+            assert!(
+                is_supported_openlid_label(label),
+                "expected {label} supported"
+            );
             assert!(is_supported_openlid_label(&format!("__label__{label}")));
         }
     }
@@ -383,7 +389,10 @@ mod tests {
     #[test]
     fn is_supported_rejects_off_list_labels() {
         for label in ["xxx_Yyyy", "en", ""] {
-            assert!(!is_supported_openlid_label(label), "expected {label} unsupported");
+            assert!(
+                !is_supported_openlid_label(label),
+                "expected {label} unsupported"
+            );
         }
     }
 }

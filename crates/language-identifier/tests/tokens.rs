@@ -4,7 +4,9 @@
 //! empty (verified by the lone test below); when it is on, every
 //! per-language backend is exercised.
 
-use language_identifier::{identify, IdentifyResult, Segment};
+use language_identifier::identify;
+#[cfg(feature = "tokenize")]
+use language_identifier::{IdentifyResult, Segment};
 
 #[cfg(not(feature = "tokenize"))]
 #[test]
@@ -108,6 +110,9 @@ fn lindera_tokenizes_japanese_segment() {
 fn icu_tokenizes_korean_segment() {
     let r = identify("안녕하세요 세계");
     let seg = find_segment(&r, "ko");
-    assert!(!seg.tokens.is_empty(), "expected ICU tokens for ko, got none");
+    assert!(
+        !seg.tokens.is_empty(),
+        "expected ICU tokens for ko, got none"
+    );
     assert_tokens_consistent(seg, &r.normalized_text);
 }

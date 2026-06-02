@@ -42,7 +42,10 @@ fn ml_classifier_influences_candidate_ordering() {
     let input = "学";
     let baseline = identify(input);
     assert!(
-        matches!(baseline.primary_language.as_deref(), Some("ja") | Some("zh")),
+        matches!(
+            baseline.primary_language.as_deref(),
+            Some("ja") | Some("zh")
+        ),
         "unexpected baseline primary: {:?}",
         baseline.primary_language
     );
