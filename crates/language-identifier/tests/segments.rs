@@ -104,6 +104,45 @@ fn vi_segment_text_is_the_vi_words() {
 }
 
 #[test]
+fn embedded_chinese_run_in_japanese_overrides_global_han_strategy() {
+    // A contiguous Chinese-only Han run (含 Hans-only `师`) embedded
+    // inside a kana-dominated Japanese paragraph should be re-attributed
+    // to zh-Hans locally, instead of inheriting the global
+    // JapaneseClaimsHan strategy and getting absorbed into the
+    // surrounding ja segment.
+    let r = identify(
+        "日本語の文の中に 中文老师在大学教中文 という中国語の例文が含まれている場合、システムは日本語を主言語として扱う必要があります。",
+    );
+    assert_eq!(r.primary_language.as_deref(), Some("ja"), "{r:?}");
+    let zh_hans = r
+        .segments
+        .iter()
+        .find(|s| s.language == "zh-Hans")
+        .unwrap_or_else(|| panic!("expected an embedded zh-Hans segment: {r:?}"));
+    assert_eq!(zh_hans.text, "中文老师在大学教中文");
+    // Surrounding kana stays in ja segments — they are not swallowed by
+    // the override.
+    assert!(
+        r.segments.iter().any(|s| s.language == "ja"),
+        "expected ja segments around the embedded zh run: {r:?}"
+    );
+}
+
+#[test]
+fn embedded_ambiguous_han_run_keeps_global_strategy() {
+    // Han run with no Chinese-only marker (`先生` is shared with
+    // Japanese) inside a kana-rich paragraph stays attributed to ja —
+    // the override only fires when the run carries independent
+    // Chinese-only evidence.
+    let r = identify("日本語の文の中で 先生 という言葉は重要です。");
+    assert_eq!(r.primary_language.as_deref(), Some("ja"), "{r:?}");
+    assert!(
+        r.segments.iter().all(|s| s.language == "ja"),
+        "expected only ja segments: {r:?}"
+    );
+}
+
+#[test]
 fn segments_serialize_as_array() {
     // Use kana to anchor the embedded CJK as ja unambiguously.
     let r = identify("Please read 先生はとても親切です carefully");

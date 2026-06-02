@@ -24,8 +24,16 @@ pub struct OrthoSignals {
 }
 
 pub fn detect(input: &Normalized) -> OrthoSignals {
+    detect_chars(&input.chars)
+}
+
+/// Same as [`detect`] but operates on a slice of chars. Used by
+/// `segments::extract` to compute per-Han-run signals when deciding
+/// whether to override the global Han attribution for an embedded
+/// Chinese run inside a kana-dominated paragraph.
+pub(crate) fn detect_chars(chars: &[char]) -> OrthoSignals {
     let mut sig = OrthoSignals::default();
-    for &c in &input.chars {
+    for &c in chars {
         if classify(c) == Script::Latin && is_vi_marker(c) {
             sig.vi_markers += 1;
         }

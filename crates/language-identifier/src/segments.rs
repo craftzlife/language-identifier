@@ -1,6 +1,6 @@
 use crate::layers::morphology::LatinAttribution;
 use crate::layers::normalize::Normalized;
-use crate::layers::orthography::OrthoSignals;
+use crate::layers::orthography::{self, OrthoSignals};
 use crate::layers::script::{classify, Script};
 use crate::types::Segment;
 
@@ -22,11 +22,20 @@ pub fn extract(
         return Vec::new();
     }
 
+    // Pre-compute per-Han-run strategy overrides. The global Han
+    // strategy is one decision per call; that's usually right, but
+    // a contiguous Chinese-only Han run embedded inside a kana-rich
+    // Japanese paragraph would otherwise inherit `JapaneseClaimsHan`
+    // and disappear into the surrounding ja segment. The override
+    // pass re-classifies such runs locally.
+    let han_overrides = han_run_overrides(input, han_strategy);
+
     let mut spans: Vec<Segment> = Vec::new();
     let mut current_lang: Option<&'static str> = None;
     let mut start_char_idx: usize = 0;
     // Walk attributions in lock-step so the lookup is O(1) per char.
     let mut attr_idx = 0usize;
+    let mut over_idx = 0usize;
 
     for (i, &c) in input.chars.iter().enumerate() {
         // Advance past attributions fully consumed by previous chars.
@@ -38,9 +47,18 @@ pub fn extract(
             .filter(|a| a.start <= i && i < a.end)
             .map(|a| a.language);
 
+        while over_idx < han_overrides.len() && han_overrides[over_idx].end <= i {
+            over_idx += 1;
+        }
+        let effective_han = han_overrides
+            .get(over_idx)
+            .filter(|o| o.start <= i && i < o.end)
+            .map(|o| o.strategy)
+            .unwrap_or(han_strategy);
+
         let attr = match (classify(c), latin_override) {
             (Script::Latin, Some(l)) => Some(l),
-            _ => attribute(c, ortho, han_strategy),
+            _ => attribute(c, ortho, effective_han),
         };
         match (current_lang, attr) {
             (None, Some(l)) => {
@@ -129,6 +147,111 @@ fn attribute(c: char, ortho: &OrthoSignals, han: HanStrategy) -> Option<&'static
         }
         Script::Other => None,
     }
+}
+
+/// A contiguous Han run whose attribution should override the global
+/// `HanStrategy` for that run only. `start` / `end` are char indices
+/// into `Normalized.chars`.
+#[derive(Debug, Clone, Copy)]
+struct HanRunOverride {
+    start: usize,
+    end: usize,
+    strategy: HanStrategy,
+}
+
+/// Find Han runs that should override the global Han strategy.
+///
+/// The global strategy is correct for most inputs, but it forces every
+/// Han char to one language — wrong when an unambiguously-Chinese run
+/// sits embedded in a kana-rich Japanese paragraph, since the global
+/// strategy becomes `JapaneseClaimsHan` and the embedded run silently
+/// merges into the surrounding `ja` segment.
+///
+/// The override fires only when:
+/// 1. The global strategy is `JapaneseClaimsHan` (kana present), and
+/// 2. The run is purely Han + punctuation/whitespace (no kana inside —
+///    splitting on each kana boundary), and
+/// 3. The run contains at least one Chinese-only marker
+///    (Hans-only / Hant-only / yue / lzh / HK / TW char).
+///
+/// Single Han chars with no marker stay on the global strategy — that
+/// preserves the W1 / ambiguous-single-character behavior.
+fn han_run_overrides(input: &Normalized, global: HanStrategy) -> Vec<HanRunOverride> {
+    if !matches!(global, HanStrategy::JapaneseClaimsHan) {
+        return Vec::new();
+    }
+
+    let mut overrides = Vec::new();
+    let mut run_start: Option<usize> = None;
+
+    for (i, &c) in input.chars.iter().enumerate() {
+        let sc = classify(c);
+        let breaks_run = matches!(sc, Script::Hiragana | Script::Katakana | Script::Hangul);
+        let is_han = sc == Script::Han;
+
+        if breaks_run {
+            if let Some(s) = run_start.take() {
+                if let Some(o) = try_override(&input.chars[s..i], s, i) {
+                    overrides.push(o);
+                }
+            }
+            continue;
+        }
+
+        if is_han && run_start.is_none() {
+            run_start = Some(i);
+        }
+        // Latin / Other (punctuation, whitespace) neither start a new
+        // Han run nor break an existing one — they ride along until
+        // the next kana or end-of-input.
+    }
+    if let Some(s) = run_start {
+        if let Some(o) = try_override(&input.chars[s..], s, input.chars.len()) {
+            overrides.push(o);
+        }
+    }
+    overrides
+}
+
+/// Decide whether the char slice between `[start, end)` warrants a
+/// local Han-strategy override. Returns `Some` only if the slice
+/// contains at least one Han char and at least one Chinese-only
+/// marker.
+fn try_override(chars: &[char], start: usize, end: usize) -> Option<HanRunOverride> {
+    let any_han = chars.iter().any(|&c| classify(c) == Script::Han);
+    if !any_han {
+        return None;
+    }
+    let sig = orthography::detect_chars(chars);
+    let chinese_evidence = sig.hans_markers
+        + sig.hant_markers
+        + sig.yue_markers
+        + sig.lzh_markers
+        + sig.hant_hk_markers
+        + sig.hant_tw_markers;
+    if chinese_evidence == 0 {
+        return None;
+    }
+
+    let han_in_run = chars.iter().filter(|&&c| classify(c) == Script::Han).count();
+    let strategy = if sig.yue_markers > 0 {
+        HanStrategy::CantonesePreferred
+    } else if sig.lzh_markers >= 3 && han_in_run >= 4 {
+        HanStrategy::ClassicalPreferred
+    } else if sig.hant_hk_markers > 0 && sig.hant_tw_markers == 0 {
+        HanStrategy::HantHkPreferred
+    } else if sig.hant_tw_markers > 0 && sig.hant_hk_markers == 0 {
+        HanStrategy::HantTwPreferred
+    } else if sig.hant_markers > 0 && sig.hans_markers == 0 {
+        HanStrategy::HantPreferred
+    } else if sig.hans_markers > 0 && sig.hant_markers == 0 {
+        HanStrategy::HansPreferred
+    } else {
+        // Mixed Hans + Hant markers in the same run — keep the global
+        // strategy rather than commit to one variant.
+        return None;
+    };
+    Some(HanRunOverride { start, end, strategy })
 }
 
 fn push_span(
