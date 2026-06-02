@@ -37,6 +37,14 @@ pub struct Segment {
     pub start: u64,
     pub end: u64,
     pub text: String,
+    pub tokens: Vec<Token>,
+}
+
+#[derive(uniffi::Record)]
+pub struct Token {
+    pub text: String,
+    pub start: u64,
+    pub end: u64,
 }
 
 #[derive(uniffi::Record)]
@@ -87,6 +95,17 @@ impl From<li::Segment> for Segment {
             start: s.start as u64,
             end: s.end as u64,
             text: s.text,
+            tokens: s.tokens.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<li::Token> for Token {
+    fn from(t: li::Token) -> Self {
+        Token {
+            text: t.text,
+            start: t.start as u64,
+            end: t.end as u64,
         }
     }
 }

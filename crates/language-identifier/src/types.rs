@@ -38,6 +38,23 @@ pub struct Segment {
     /// input between `start` and `end`. Carried in the output so callers can
     /// read the segment without holding the original normalized text.
     pub text: String,
+    /// Per-language tokenization of the segment. Populated when a
+    /// matching `tokenize-*` cargo feature is enabled; empty otherwise.
+    /// Token offsets share the segment's coordinate system (absolute
+    /// byte offsets into the normalized input text).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tokens: Vec<Token>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Token {
+    /// The token text, sliced from the normalized input between
+    /// `start` and `end`.
+    pub text: String,
+    /// Byte offset into the normalized input text, inclusive.
+    pub start: usize,
+    /// Byte offset into the normalized input text, exclusive.
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

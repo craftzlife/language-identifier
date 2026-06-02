@@ -276,6 +276,7 @@ fn push_span(
         start,
         end,
         text: input.text[start..end].to_string(),
+        tokens: Vec::new(),
     });
 }
 

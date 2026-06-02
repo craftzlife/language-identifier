@@ -12,6 +12,7 @@ path = "src/main.rs"
 [features]
 default = []
 ml-openlid = ["language-identifier/ml-openlid"]
+tokenize = ["language-identifier/tokenize"]
 
 [dependencies]
 language-identifier = { path = "../language-identifier" }

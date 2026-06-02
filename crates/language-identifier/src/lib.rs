@@ -14,6 +14,7 @@ mod openlid;
 mod options;
 mod pipeline;
 mod segments;
+mod tokenize;
 mod types;
 
 pub use bcp47::{macro_of, variants_of};
@@ -21,7 +22,7 @@ pub use bcp47::{macro_of, variants_of};
 pub use layers::ml::openlid::{LoadError as OpenLidLoadError, OpenLidClassifier};
 pub use layers::ml::{MlClassifier, UnsupportedSignal};
 pub use options::IdentifyOptions;
-pub use types::{Candidate, IdentifyResult, Segment, Status};
+pub use types::{Candidate, IdentifyResult, Segment, Status, Token};
 
 /// Identify the language of a single string using the default
 /// configuration (Layers 0–7 only — Layer 9 disabled).

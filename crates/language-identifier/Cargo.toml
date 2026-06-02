@@ -15,10 +15,23 @@ default = []
 # requirements.
 ml-openlid = ["dep:fasttext"]
 
+# Per-segment tokenization. The right tokenizer is picked at runtime
+# from the segment's language: jieba (zh family), lindera/IPADIC (ja),
+# and icu_segmenter for everything else (incl. ko). With the feature
+# off, `Segment.tokens` is always empty and omitted from JSON.
+tokenize = [
+    "dep:jieba-rs",
+    "dep:lindera",
+    "dep:icu_segmenter",
+]
+
 [dependencies]
 serde = { workspace = true }
 unicode-normalization = { workspace = true }
 fasttext = { version = "0.8", optional = true }
+jieba-rs = { version = "0.10", optional = true }
+lindera = { version = "3.0", features = ["embed-ipadic"], optional = true }
+icu_segmenter = { version = "2", optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

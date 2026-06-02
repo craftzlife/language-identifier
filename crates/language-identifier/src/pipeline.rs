@@ -14,6 +14,7 @@ use crate::layers::{
 };
 use crate::options::IdentifyOptions;
 use crate::segments::{self, HanStrategy};
+use crate::tokenize;
 use crate::types::{IdentifyResult, Status};
 
 pub fn run(input: &str) -> IdentifyResult {
@@ -222,7 +223,11 @@ pub fn run_with(input: &str, opts: &IdentifyOptions<'_>) -> IdentifyResult {
     }
 
     let han_strategy = pick_han_strategy(&counts, &ortho);
-    let segments = segments::extract(&normalized, &ortho, han_strategy, &morph.latin_attribution);
+    let mut segments =
+        segments::extract(&normalized, &ortho, han_strategy, &morph.latin_attribution);
+    for seg in segments.iter_mut() {
+        tokenize::tokenize(seg);
+    }
 
     let hints = CalibrationHints {
         context_multi_language: context.multi_language,
